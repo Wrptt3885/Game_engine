@@ -1,0 +1,54 @@
+# Build directories
+build/
+build_dx11/
+cmake_build/
+out/
+dist/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.DS_Store
+
+# Dependencies (if any)
+*.lib
+*.exp
+
+# Executables
+MyEngine
+MyEngine.exe
+
+# Debug symbols
+*.pdb
+
+# Temporary files
+*.tmp
+.cache/
+build_log.txt
+
+# Runtime output / logs
+run_out.txt
+run_err.txt
+shader_out.txt
+shader_error.txt
+
+# Assets — textures are large binaries, keep locally only
+assets/textures/

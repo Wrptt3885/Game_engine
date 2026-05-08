@@ -1,0 +1,200 @@
+{
+  "gameObjects": [
+    {
+      "active": true,
+      "components": [
+        {
+          "material": {
+            "albedo": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "metallic": 0.0,
+            "normalMap": "",
+            "roughness": 0.5,
+            "texture": "cube.png",
+            "worldSpaceUV": false,
+            "worldUVTile": 0.10000000149011612
+          },
+          "mesh": "cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "mass": 1.0,
+          "type": "Rigidbody",
+          "useGravity": true
+        },
+        {
+          "isStatic": false,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "Collider"
+        }
+      ],
+      "name": "Cube",
+      "transform": {
+        "position": [
+          0.0,
+          3.0,
+          0.0
+        ],
+        "rotation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "material": {
+            "albedo": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "metallic": 0.0,
+            "normalMap": "",
+            "roughness": 0.5,
+            "texture": "marble_cliff_03_4k.blend/textures/marble_cliff_03_diff_4k.jpg",
+            "worldSpaceUV": true,
+            "worldUVTile": 0.10000000149011612
+          },
+          "mesh": "plane.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "isStatic": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "size": [
+            1000.0,
+            0.20000000298023224,
+            1000.0
+          ],
+          "type": "Collider"
+        }
+      ],
+      "name": "Floor",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "color": [
+            1.0,
+            0.949999988079071,
+            0.800000011920929
+          ],
+          "direction": [
+            -0.3713906705379486,
+            -0.7427813410758972,
+            -0.5570859909057617
+          ],
+          "intensity": 1.0,
+          "lightType": "Directional",
+          "radius": 10.0,
+          "type": "Light"
+        }
+      ],
+      "name": "Sun",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "color": [
+            0.4000000059604645,
+            0.5,
+            0.699999988079071
+          ],
+          "direction": [
+            0.6666666865348816,
+            -0.3333333432674408,
+            0.6666666865348816
+          ],
+          "intensity": 0.4000000059604645,
+          "lightType": "Directional",
+          "radius": 10.0,
+          "type": "Light"
+        }
+      ],
+      "name": "FillLight",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  ],
+  "name": "MainScene"
+}
