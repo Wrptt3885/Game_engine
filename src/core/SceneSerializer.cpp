@@ -10,6 +10,11 @@
 #include "renderer/GLTFLoader.h"
 #include "renderer/Texture.h"
 #include "graphics/Material.h"
+#include "scripting/LuaScript.h"
+#include "ui/UILabel.h"
+#include "ui/UIImage.h"
+#include "ui/UILayer.h"
+#include "ui/UIElement.h"
 #include <json.hpp>
 #include <fstream>
 #include <iostream>
@@ -18,7 +23,7 @@
 
 using json = nlohmann::json;
 
-// ---- path helpers ----
+// ---- path helpers ----------------------------------------------------------
 
 static std::string s_AssetDir = ASSET_DIR;
 
@@ -34,20 +39,21 @@ static std::string ToAbsolute(const std::string& rel) {
     return s_AssetDir + "/" + rel;
 }
 
-// ---- glm <-> json ----
+// ---- glm <-> json ----------------------------------------------------------
 
 static json V3(const glm::vec3& v)   { return {v.x, v.y, v.z}; }
 static json V4(const glm::quat& q)   { return {q.w, q.x, q.y, q.z}; }
 static glm::vec3 ToV3(const json& j) { return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()}; }
 static glm::quat ToQ (const json& j) { return glm::quat(j[0].get<float>(), j[1].get<float>(), j[2].get<float>(), j[3].get<float>()); }
 
-// ---- Shared JSON builder ----
+// ---- Shared JSON builder ---------------------------------------------------
 
 static json BuildSceneJson(Scene& scene) {
     json root;
     root["name"] = scene.GetName();
-    root["gameObjects"] = json::array();
 
+    // GameObjects
+    root["gameObjects"] = json::array();
     for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
         auto obj = scene.GetGameObject(i);
         if (!obj) continue;
@@ -81,7 +87,6 @@ static json BuildSceneJson(Scene& scene) {
             };
             jo["components"].push_back(jc);
         }
-
         if (auto rb = obj->GetComponent<Rigidbody>()) {
             jo["components"].push_back({
                 {"type",        "Rigidbody"},
@@ -91,7 +96,6 @@ static json BuildSceneJson(Scene& scene) {
                 {"restitution", rb->restitution}
             });
         }
-
         if (auto col = obj->GetComponent<Collider>()) {
             jo["components"].push_back({
                 {"type",     "Collider"},
@@ -100,7 +104,6 @@ static json BuildSceneJson(Scene& scene) {
                 {"isStatic", col->isStatic}
             });
         }
-
         if (auto light = obj->GetComponent<Light>()) {
             jo["components"].push_back({
                 {"type",      "Light"},
@@ -111,17 +114,49 @@ static json BuildSceneJson(Scene& scene) {
                 {"radius",    light->radius}
             });
         }
+        if (auto ls = obj->GetComponent<LuaScript>()) {
+            jo["components"].push_back({
+                {"type", "LuaScript"},
+                {"path", ls->GetPath().empty() ? "" : ToRelative(ls->GetPath())}
+            });
+        }
 
         root["gameObjects"].push_back(jo);
     }
+
+    // UILayer
+    root["uiLayer"] = json::array();
+    for (const auto& el : scene.GetUILayer().GetElements()) {
+        if (!el) continue;
+        json je;
+        je["type"]    = el->GetTypeName();
+        je["name"]    = el->name;
+        je["pos"]     = {el->pos.x, el->pos.y};
+        je["visible"] = el->visible;
+
+        if (auto lbl = std::dynamic_pointer_cast<UILabel>(el)) {
+            je["text"]     = lbl->text;
+            je["color"]    = {lbl->color.r, lbl->color.g, lbl->color.b, lbl->color.a};
+            je["fontSize"] = lbl->fontSize;
+            je["centered"] = lbl->centered;
+        }
+        else if (auto img = std::dynamic_pointer_cast<UIImage>(el)) {
+            je["texture"] = img->texture ? ToRelative(img->texture->GetPath()) : "";
+            je["size"]    = {img->size.x, img->size.y};
+            je["tint"]    = {img->tint.r, img->tint.g, img->tint.b, img->tint.a};
+        }
+        root["uiLayer"].push_back(je);
+    }
+
     return root;
 }
 
-// ---- Shared scene loader (from parsed json) ----
+// ---- Shared scene loader ---------------------------------------------------
 
 static std::shared_ptr<Scene> SceneFromJson(const json& root) {
     auto scene = std::make_shared<Scene>(root.value("name", "Scene"));
 
+    // GameObjects
     for (auto& jo : root["gameObjects"]) {
         auto obj = scene->CreateGameObject(jo.value("name", "GameObject"));
         obj->SetActive(jo.value("active", true));
@@ -142,13 +177,11 @@ static std::shared_ptr<Scene> SceneFromJson(const json& root) {
                 auto mr = obj->AddComponent<MeshRenderer>();
                 std::string meshRel = jc.value("mesh", "");
                 if (!meshRel.empty()) {
-                    // Strip optional "::N" suffix to get the real extension
                     std::string basePath = meshRel;
                     size_t sep = basePath.rfind("::");
                     if (sep != std::string::npos) basePath = basePath.substr(0, sep);
                     std::string ext = std::filesystem::path(basePath).extension().string();
                     for (auto& c : ext) c = (char)tolower((unsigned char)c);
-
                     if (ext == ".gltf" || ext == ".glb")
                         mr->SetMesh(GLTFLoader::LoadMesh(ToAbsolute(meshRel)));
                     else
@@ -191,12 +224,45 @@ static std::shared_ptr<Scene> SceneFromJson(const json& root) {
                 if (jc.contains("color"))     light->color     = ToV3(jc["color"]);
                 if (jc.contains("direction")) light->direction = ToV3(jc["direction"]);
             }
+            else if (type == "LuaScript") {
+                auto ls = obj->AddComponent<LuaScript>();
+                std::string pathRel = jc.value("path", "");
+                if (!pathRel.empty()) ls->SetPath(ToAbsolute(pathRel));
+            }
         }
     }
+
+    // UILayer
+    if (root.contains("uiLayer") && root["uiLayer"].is_array()) {
+        for (auto& je : root["uiLayer"]) {
+            std::string type = je.value("type", "");
+            if (type == "UILabel") {
+                auto lbl      = scene->GetUILayer().CreateLabel(je.value("name", "UILabel"));
+                lbl->visible  = je.value("visible",  true);
+                lbl->text     = je.value("text",     "Label");
+                lbl->fontSize = je.value("fontSize", 16.0f);
+                lbl->centered = je.value("centered", false);
+                if (je.contains("pos"))   { lbl->pos.x   = je["pos"][0];   lbl->pos.y   = je["pos"][1]; }
+                if (je.contains("color")) { lbl->color.r = je["color"][0]; lbl->color.g = je["color"][1];
+                                            lbl->color.b = je["color"][2]; lbl->color.a = je["color"][3]; }
+            }
+            else if (type == "UIImage") {
+                auto img     = scene->GetUILayer().CreateImage(je.value("name", "UIImage"));
+                img->visible = je.value("visible", true);
+                std::string texRel = je.value("texture", "");
+                if (!texRel.empty()) img->texture = Texture::Create(ToAbsolute(texRel));
+                if (je.contains("pos"))  { img->pos.x  = je["pos"][0];  img->pos.y  = je["pos"][1]; }
+                if (je.contains("size")) { img->size.x = je["size"][0]; img->size.y = je["size"][1]; }
+                if (je.contains("tint")) { img->tint.r = je["tint"][0]; img->tint.g = je["tint"][1];
+                                           img->tint.b = je["tint"][2]; img->tint.a = je["tint"][3]; }
+            }
+        }
+    }
+
     return scene;
 }
 
-// ---- Public API ----
+// ---- Public API ------------------------------------------------------------
 
 void SceneSerializer::Save(Scene& scene, const std::string& filepath) {
     std::ofstream file(filepath);

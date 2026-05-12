@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/GameObject.h"
+#include "ui/UILayer.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ public:
 
     void Update(float deltaTime);
     void Render(const Camera& camera);
+    void OnGUI();
 
     size_t GetGameObjectCount() const { return m_GameObjects.size(); }
     std::shared_ptr<GameObject> GetGameObject(size_t index) {
@@ -34,8 +36,12 @@ public:
     }
     std::shared_ptr<GameObject> FindGameObject(const std::string& name) const;
 
+    UILayer& GetUILayer() { return m_UILayer; }
+    const UILayer& GetUILayer() const { return m_UILayer; }
+
 private:
     std::string m_Name;
     std::vector<std::shared_ptr<GameObject>> m_GameObjects;
     std::function<void(GameObject*)> m_OnDestroy;
+    UILayer m_UILayer;
 };

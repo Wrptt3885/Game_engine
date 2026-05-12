@@ -59,6 +59,7 @@ public:
 
     void Update(float deltaTime);
     void Render(const Camera& camera);
+    void OnGUI();
 
     // Forwards collision events to all components
     void DispatchCollisionEnter(GameObject* other);

@@ -7,6 +7,8 @@
 #include "graphics/Material.h"
 #include "graphics/Light.h"
 #include "physics/JoltPhysicsSystem.h"
+#include "scripting/LuaManager.h"
+#include "scripting/LuaScript.h"
 
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
@@ -56,10 +58,19 @@ void Application::StartPlay() {
         JoltPhysicsSystem::RemoveBody(go);
     });
 
+    // Enable Lua play mode and call Awake on every LuaScript
+    LuaManager::SetPlayMode(true);
+    for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
+        auto obj = m_CurrentScene->GetGameObject(i);
+        if (obj)
+            if (auto ls = obj->GetComponent<LuaScript>()) ls->Reload();
+    }
+
     std::cout << "[PlayMode] Started\n";
 }
 
 void Application::StopPlay() {
+    LuaManager::SetPlayMode(false);
     JoltPhysicsSystem::DestroyCharacter();
     if (m_CurrentScene) m_CurrentScene->ClearDestroyCallback();
     JoltPhysicsSystem::ClearBodies();

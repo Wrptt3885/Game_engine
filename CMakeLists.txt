@@ -54,6 +54,28 @@ set(JPH_USE_CPU_COMPUTE      OFF CACHE BOOL "" FORCE)
 set(CPP_RTTI_ENABLED         ON  CACHE BOOL "" FORCE)
 add_subdirectory(vendor/JoltPhysics/Build JoltBuild)
 
+# ---- Lua 5.4 + sol2 --------------------------------------------------------
+# Requires: pacman -S --noconfirm mingw-w64-x86_64-lua
+set(LUA_STATIC "${MSYS2_ROOT}/lib/liblua.a")
+set(LUA_INC    "${MSYS2_ROOT}/include")   # lua.h lives here (same as glfw/glm)
+
+if(EXISTS "${LUA_STATIC}")
+    include(FetchContent)
+    FetchContent_Declare(sol2
+        URL      https://github.com/ThePhD/sol2/archive/refs/tags/v3.3.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_GetProperties(sol2)
+    if(NOT sol2_POPULATED)
+        FetchContent_Populate(sol2)
+    endif()
+
+    set(LUA_SCRIPTING_ENABLED TRUE)
+    message(STATUS "[Lua] Scripting ENABLED — ${LUA_STATIC}")
+else()
+    message(STATUS "[Lua] Not found — scripting disabled. Run: pacman -S --noconfirm mingw-w64-x86_64-lua")
+endif()
+
 # ---- Sources ----------------------------------------------------------------
 file(GLOB_RECURSE SOURCES src/*.cpp src/*.c)
 
@@ -106,6 +128,18 @@ endif()
 
 # ---- Link libraries ---------------------------------------------------------
 target_link_libraries(MyEngine PRIVATE glfw glm::glm Jolt)
+
+if(LUA_SCRIPTING_ENABLED)
+    target_include_directories(MyEngine PRIVATE "${sol2_SOURCE_DIR}/include")
+    target_link_libraries(MyEngine PRIVATE "${LUA_STATIC}")
+    target_compile_definitions(MyEngine PRIVATE LUA_SCRIPTING)
+    # sol2 v3.3.0 has template-body issues with GCC 15+; suppress for scripting files only
+    set_source_files_properties(
+        "${CMAKE_SOURCE_DIR}/src/scripting/LuaManager.cpp"
+        "${CMAKE_SOURCE_DIR}/src/scripting/LuaScript.cpp"
+        PROPERTIES COMPILE_FLAGS "-Wno-template-body -fpermissive"
+    )
+endif()
 
 if(USE_DX11)
     target_link_libraries(MyEngine PRIVATE d3d11 dxgi d3dcompiler dxguid)

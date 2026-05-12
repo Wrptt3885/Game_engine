@@ -21,6 +21,9 @@ void EditorLayer::DrawMenuBar(Scene& scene, const std::string& scenePath, bool i
     if (ImGui::BeginMenu("View")) {
         if (ImGui::MenuItem("Fullscreen", "F11"))
             ToggleFullscreen();
+        ImGui::Separator();
+        ImGui::MenuItem("Hierarchy",  nullptr, &m_ShowHierarchy);
+        ImGui::MenuItem("Inspector",  nullptr, &m_ShowInspector);
         ImGui::EndMenu();
     }
 

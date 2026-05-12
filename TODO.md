@@ -49,11 +49,15 @@
 
 ## Up Next — Gameplay Systems (ลำดับนี้)
 
-### 1. In-game UI
-- [ ] Text rendering (font atlas หรือ ImGui runtime draw)
-- [ ] UILabel, UIImage components
-- [ ] Screen-space anchor/layout (top-left, center, etc.)
-- [ ] HUD ที่ render แยกจาก editor ImGui
+### 1. In-game UI ✅
+- [x] Text rendering (ImGui background draw list)
+- [x] UILabel component — text, anchor, offset, color, fontSize, centered
+- [x] UIImage component — texture, anchor, offset, size, tint
+- [x] Screen-space anchor/layout (9 anchor points)
+- [x] HUD renders via UICanvas (separate from editor panels)
+- [x] OnGUI() hook on Component / GameObject / Scene
+- [x] Inspector panels for UILabel + UIImage
+- [x] Serialization (save/load UILabel + UIImage)
 
 ### 2. Lua Scripting
 - [ ] รวม sol2 + Lua 5.4 ใน vendor/

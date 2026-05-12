@@ -7,6 +7,8 @@
 #include "core/Camera.h"
 #include "graphics/Light.h"
 #include "physics/JoltPhysicsSystem.h"
+#include "scripting/LuaManager.h"
+#include "ui/UICanvas.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
@@ -121,6 +123,9 @@ void Application::Update(float deltaTime) {
         m_Camera->SetFollowCamera(charPos + glm::vec3(0.0f, 0.8f, 0.0f), 5.0f, 1.5f);
     }
 
+    LuaManager::SetScene(m_CurrentScene.get());
+    LuaManager::SetTime(deltaTime);
+
     if (m_CurrentScene) {
         m_CurrentScene->Update(deltaTime);
         if (m_IsPlaying) JoltPhysicsSystem::Update(*m_CurrentScene, deltaTime);
@@ -161,6 +166,11 @@ void Application::Render() {
     Renderer::ApplyTonemap();
 
     m_Editor.BeginFrame();
+    UICanvas::BeginFrame((float)w, (float)h);
+    if (m_CurrentScene) {
+        m_CurrentScene->OnGUI();
+        m_CurrentScene->GetUILayer().Render();
+    }
     if (m_CurrentScene)
         m_Editor.Render(*m_CurrentScene, *m_Camera, SCENE_PATH, m_IsPlaying);
     m_Editor.EndFrame();

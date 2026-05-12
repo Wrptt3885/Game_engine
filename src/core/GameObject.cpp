@@ -18,6 +18,11 @@ void GameObject::Render(const Camera& camera) {
         comp->Render(camera);
 }
 
+void GameObject::OnGUI() {
+    for (auto& comp : m_Components)
+        comp->OnGUI();
+}
+
 void GameObject::DispatchCollisionEnter(GameObject* other) {
     for (auto& comp : m_Components) comp->OnCollisionEnter(other);
 }

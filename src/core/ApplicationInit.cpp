@@ -1,6 +1,7 @@
 #include "core/Application.h"
 #include "renderer/Renderer.h"
 #include "platform/Input.h"
+#include "scripting/LuaManager.h"
 #include "core/Scene.h"
 #include "core/Camera.h"
 #include "core/GameObject.h"
@@ -128,6 +129,7 @@ void Application::ReconnectSceneReferences() {
 void Application::Shutdown() {
     m_Editor.Shutdown();
     Renderer::Shutdown();
+    LuaManager::Shutdown();
     JoltPhysicsSystem::Shutdown();
 #ifdef USE_DX11_BACKEND
     DX11Context::Shutdown();

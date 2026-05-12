@@ -16,6 +16,9 @@ public:
     virtual void OnCollisionStay(GameObject* other)  {}
     virtual void OnCollisionExit(GameObject* other)  {}
 
+    // Called once per frame inside the ImGui frame — use UICanvas to draw HUD elements.
+    virtual void OnGUI() {}
+
     GameObject* GetGameObject() const { return m_GameObject; }
 
 private:

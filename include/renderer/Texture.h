@@ -12,6 +12,7 @@ public:
     virtual int  GetHeight() const = 0;
     virtual bool IsLoaded()  const = 0;
     virtual const std::string& GetPath() const = 0;
+    virtual void* GetImTextureID() const { return nullptr; }
 
     static std::shared_ptr<Texture> Create(const std::string& path);
     // Create from raw RGBA pixel data (for embedded GLB textures)

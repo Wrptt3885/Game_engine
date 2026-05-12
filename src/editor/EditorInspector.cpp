@@ -6,6 +6,10 @@
 #include "physics/Rigidbody.h"
 #include "physics/Collider.h"
 #include "graphics/Light.h"
+#include "scripting/LuaScript.h"
+#include "ui/UIElement.h"
+#include "ui/UILabel.h"
+#include "ui/UIImage.h"
 
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -24,7 +28,73 @@ static void Field3(const char* label, glm::vec3& v, float speed = 0.1f,
     ImGui::PopID();
 }
 
+// ---- UIElement inspector ---------------------------------------------------
+
+static void DrawUIElementHeader(UIElement& el) {
+    ImGui::Separator();
+    char nameBuf[128];
+    strncpy(nameBuf, el.name.c_str(), sizeof(nameBuf) - 1);
+    nameBuf[sizeof(nameBuf) - 1] = '\0';
+    ImGui::Text("Name");
+    ImGui::SameLine(80.0f);
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputText("##uiname", nameBuf, sizeof(nameBuf)))
+        el.name = nameBuf;
+
+    ImGui::Checkbox("Visible", &el.visible);
+    ImGui::Spacing();
+    ImGui::DragFloat2("Position", &el.pos.x, 1.0f);
+}
+
+// ---- DrawInspector ---------------------------------------------------------
+
 void EditorLayer::DrawInspector(bool isPlaying) {
+    // ---- UIElement selected ------------------------------------------------
+    if (m_SelectedUI) {
+        ImGui::TextUnformatted(m_SelectedUI->GetTypeName());
+        DrawUIElementHeader(*m_SelectedUI);
+        ImGui::Separator();
+
+        if (auto lbl = std::dynamic_pointer_cast<UILabel>(m_SelectedUI)) {
+            if (ImGui::CollapsingHeader("Text", ImGuiTreeNodeFlags_DefaultOpen)) {
+                char buf[256];
+                strncpy(buf, lbl->text.c_str(), sizeof(buf) - 1);
+                buf[sizeof(buf) - 1] = '\0';
+                if (ImGui::InputText("##lbltxt", buf, sizeof(buf)))
+                    lbl->text = buf;
+                ImGui::ColorEdit4("Color",     &lbl->color.r);
+                ImGui::DragFloat ("Font Size", &lbl->fontSize, 0.5f, 6.0f, 128.0f);
+                ImGui::Checkbox  ("Centered",  &lbl->centered);
+            }
+        }
+        else if (auto img = std::dynamic_pointer_cast<UIImage>(m_SelectedUI)) {
+            if (ImGui::CollapsingHeader("Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("Texture");
+                ImGui::SameLine(80.0f);
+                if (img->texture)
+                    ImGui::TextDisabled("%.20s", fs::path(img->texture->GetPath()).filename().string().c_str());
+                else
+                    ImGui::TextDisabled("None");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("...##uitex")) {
+                    m_UIImageTexTarget = img;
+                    m_TexSlot          = TexSlot::UIImageTex;
+                    m_ShowTexDlg       = true;
+                    m_SelectedTex      = "";
+                    m_TexBrowsePath    = ASSET_DIR;
+                }
+                if (img->texture) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X##clruitex")) img->texture = nullptr;
+                }
+                ImGui::DragFloat2("Size", &img->size.x, 1.0f, 1.0f, 4096.0f);
+                ImGui::ColorEdit4("Tint", &img->tint.r);
+            }
+        }
+        return;
+    }
+
+    // ---- GameObject selected -----------------------------------------------
     if (isPlaying) {
         ImGui::TextDisabled("Editing disabled in Play Mode");
         ImGui::Spacing();
@@ -35,7 +105,6 @@ void EditorLayer::DrawInspector(bool isPlaying) {
     }
     if (isPlaying) ImGui::BeginDisabled();
 
-    // Header
     bool active = m_Selected->IsActive();
     if (ImGui::Checkbox("##active", &active)) m_Selected->SetActive(active);
     ImGui::SameLine();
@@ -77,7 +146,6 @@ void EditorLayer::DrawInspector(bool isPlaying) {
                         m_TexBrowsePath = fs::path(mr->GetMesh()->GetPath()).parent_path().string();
                 };
 
-                // Albedo texture
                 ImGui::Text("Albedo Tex");
                 ImGui::SameLine(80.0f);
                 if (mat.texture)
@@ -91,7 +159,6 @@ void EditorLayer::DrawInspector(bool isPlaying) {
                     if (ImGui::SmallButton("X##cleartex")) mat.texture = nullptr;
                 }
 
-                // Normal map
                 ImGui::Text("Normal Map");
                 ImGui::SameLine(80.0f);
                 if (mat.normalMap)
@@ -136,6 +203,37 @@ void EditorLayer::DrawInspector(bool isPlaying) {
             }
         }
 
+        else if (auto ls = std::dynamic_pointer_cast<LuaScript>(comp)) {
+            if (ImGui::CollapsingHeader("LuaScript", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("Script");
+                ImGui::SameLine(80.0f);
+                if (ls->GetPath().empty())
+                    ImGui::TextDisabled("None");
+                else
+                    ImGui::TextDisabled("%.28s", fs::path(ls->GetPath()).filename().string().c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("...##lua")) {
+                    m_ScriptTarget     = ls;
+                    m_ShowScriptDlg    = true;
+                    m_SelectedScript   = "";
+                    m_ScriptBrowsePath = std::string(ASSET_DIR) + "/scripts";
+                }
+                if (!ls->GetPath().empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Reload")) ls->Reload();
+                }
+                if (!ls->GetPath().empty()) {
+                    if (ls->IsValid())
+                        ImGui::TextColored({0.3f, 1.0f, 0.3f, 1.0f}, "OK");
+                    else {
+                        ImGui::TextColored({1.0f, 0.35f, 0.35f, 1.0f}, "Error");
+                        if (!ls->GetError().empty())
+                            ImGui::TextWrapped("%s", ls->GetError().c_str());
+                    }
+                }
+            }
+        }
+
         else if (auto light = std::dynamic_pointer_cast<Light>(comp)) {
             if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
                 const char* types[] = {"Directional", "Point"};
@@ -149,6 +247,53 @@ void EditorLayer::DrawInspector(bool isPlaying) {
                 else
                     ImGui::DragFloat("Radius", &light->radius, 0.5f, 0.1f, 500.0f);
             }
+        }
+    }
+
+    // ---- Add Component button ----------------------------------------------
+    if (!isPlaying) {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        float btnW = ImGui::GetContentRegionAvail().x;
+        if (ImGui::Button("Add Component", {btnW, 0}))
+            ImGui::OpenPopup("##addcomp");
+
+        if (ImGui::BeginPopup("##addcomp")) {
+            auto& sel = m_Selected;
+            if (!sel->HasComponent<MeshRenderer>()) {
+                if (ImGui::MenuItem("MeshRenderer")) {
+                    sel->AddComponent<MeshRenderer>();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            if (!sel->HasComponent<Rigidbody>()) {
+                if (ImGui::MenuItem("Rigidbody")) {
+                    sel->AddComponent<Rigidbody>();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            if (!sel->HasComponent<Collider>()) {
+                if (ImGui::MenuItem("Collider")) {
+                    auto col = sel->AddComponent<Collider>();
+                    col->size = {0.5f, 0.5f, 0.5f};
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            if (!sel->HasComponent<Light>()) {
+                if (ImGui::MenuItem("Light")) {
+                    sel->AddComponent<Light>();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            if (!sel->HasComponent<LuaScript>()) {
+                if (ImGui::MenuItem("LuaScript")) {
+                    sel->AddComponent<LuaScript>();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndPopup();
         }
     }
 

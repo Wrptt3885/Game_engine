@@ -13,6 +13,7 @@ public:
     int  GetHeight() const override { return m_Height; }
     bool IsLoaded()  const override { return m_ID != 0; }
     const std::string& GetPath() const override { return m_Path; }
+    void* GetImTextureID() const override { return (void*)(uintptr_t)m_ID; }
 
 private:
     unsigned int m_ID       = 0;

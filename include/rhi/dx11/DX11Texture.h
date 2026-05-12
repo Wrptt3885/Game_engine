@@ -17,6 +17,7 @@ public:
     int  GetHeight() const override { return m_Height; }
     bool IsLoaded()  const override { return m_SRV != nullptr; }
     const std::string& GetPath() const override { return m_Path; }
+    void* GetImTextureID() const override { return (void*)m_SRV; }
 
 private:
     ID3D11ShaderResourceView* m_SRV     = nullptr;

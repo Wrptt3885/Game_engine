@@ -9,6 +9,9 @@ class Scene;
 class Camera;
 class GameObject;
 class MeshRenderer;
+class UIImage;
+class UIElement;
+class LuaScript;
 
 enum class GizmoOp { Translate, Rotate, Scale };
 
@@ -28,7 +31,7 @@ public:
     // Polled each frame by Application::Update
     bool ConsumePlayRequest()  { bool v = m_PlayRequested;  m_PlayRequested  = false; return v; }
     bool ConsumeStopRequest()  { bool v = m_StopRequested;  m_StopRequested  = false; return v; }
-    void ClearSelection()      { m_Selected = nullptr; }
+    void ClearSelection()      { m_Selected = nullptr; m_SelectedUI = nullptr; }
 
     // Layout constants shared across panel files
     static constexpr float HIERARCHY_W = 200.0f;
@@ -41,9 +44,11 @@ private:
     void DrawInspector(bool isPlaying);
     void DrawImportDialog();
     void DrawTexturePickerDialog();
+    void DrawScriptPickerDialog();
     void DrawGizmo(Camera& camera);
 
     std::shared_ptr<GameObject>   m_Selected;
+    std::shared_ptr<UIElement>    m_SelectedUI;
     GLFWwindow*                   m_Window = nullptr;
     int                           m_WinX = 100, m_WinY = 100, m_WinW = 800, m_WinH = 600;
 
@@ -60,16 +65,29 @@ private:
     std::string m_BrowsePath;
     std::string m_SelectedOBJ;
 
+    // panel visibility
+    bool        m_ShowHierarchy  = true;
+    bool        m_ShowInspector  = true;
+
     // play mode signals
     bool        m_PlayRequested  = false;
     bool        m_StopRequested  = false;
     bool        m_IsPlaying      = false;
 
+    bool        m_UIDragging     = false;
+
     // texture picker dialog
-    enum class TexSlot { Diffuse, NormalMap };
-    bool                          m_ShowTexDlg   = false;
-    TexSlot                       m_TexSlot      = TexSlot::Diffuse;
+    enum class TexSlot { Diffuse, NormalMap, UIImageTex };
+    bool                          m_ShowTexDlg      = false;
+    TexSlot                       m_TexSlot         = TexSlot::Diffuse;
     std::string                   m_TexBrowsePath;
     std::string                   m_SelectedTex;
     std::shared_ptr<MeshRenderer> m_TexTarget;
+    std::shared_ptr<UIImage>      m_UIImageTexTarget;
+
+    // script picker dialog
+    bool                       m_ShowScriptDlg    = false;
+    std::string                m_ScriptBrowsePath;
+    std::string                m_SelectedScript;
+    std::shared_ptr<LuaScript> m_ScriptTarget;
 };

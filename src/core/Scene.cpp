@@ -38,6 +38,13 @@ void Scene::Update(float deltaTime) {
     }
 }
 
+void Scene::OnGUI() {
+    for (auto& obj : m_GameObjects) {
+        if (obj && obj->IsActive())
+            obj->OnGUI();
+    }
+}
+
 void Scene::Render(const Camera& camera) {
     std::vector<DirLightData> dirLights;
     std::vector<PointLightData> pointLights;
