@@ -18,7 +18,7 @@ uniform vec3      u_Color;
 uniform bool      u_UseWorldUV;
 uniform float     u_WorldUVTile;
 uniform vec3      u_ViewPos;
-uniform sampler2D u_ShadowMap;
+uniform sampler2DShadow u_ShadowMap;
 uniform float     u_Roughness;
 uniform float     u_Metallic;
 
@@ -62,8 +62,7 @@ float ShadowFactor(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     vec2  texel  = spread / textureSize(u_ShadowMap, 0);
     float shadow = 0.0;
     for (int i = 0; i < 16; i++) {
-        float pcf = texture(u_ShadowMap, proj.xy + poissonDisk[i] * texel).r;
-        shadow += (proj.z - bias) > pcf ? 1.0 : 0.0;
+        shadow += texture(u_ShadowMap, vec3(proj.xy + poissonDisk[i] * texel, proj.z - bias));
     }
     return shadow / 16.0;
 }
@@ -171,8 +170,9 @@ void main() {
 
     vec3 kS = FresnelRoughness(max(dot(N, V), 0.0), F0, roughness);
     vec3 kD = (1.0 - kS) * (1.0 - metallic);
-    vec3 ambient = kD * envColor * albedo
-                 + kS * envColor * (1.0 - roughness * roughness) * 0.5;
+    float shadowedAmbient = 1.0 - shadow * 0.4;
+    vec3 ambient = (kD * envColor * albedo
+                 + kS * envColor * (1.0 - roughness * roughness) * 0.5) * shadowedAmbient;
 
     FragColor = vec4(ambient + Lo, 1.0);
 }
