@@ -146,8 +146,8 @@ void Renderer::Init() {
     rd.CullMode              = D3D11_CULL_FRONT;
     rd.FrontCounterClockwise = TRUE;
     rd.DepthClipEnable       = TRUE;
-    rd.DepthBias             = 100;
-    rd.SlopeScaledDepthBias  = 1.0f;
+    rd.DepthBias             = 0;
+    rd.SlopeScaledDepthBias  = 0.5f;
     DX_CHECK(DX11Context::GetDevice()->CreateRasterizerState(&rd, &s_ShadowRS), "shadow RS");
 #else
     RHI::Init(GraphicsAPI::OpenGL);

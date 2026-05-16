@@ -61,7 +61,7 @@ cbuffer CBSkinning : register(b2)
 
 Texture2D    t_Diffuse      : register(t0);
 Texture2D    t_NormalMap    : register(t1);
-Texture2D    t_ShadowMap    : register(t2);
+Texture2D<float> t_ShadowMap : register(t2);
 Texture2D    t_SSAO         : register(t3);
 TextureCube  t_PointShadow  : register(t4);
 SamplerState           s_Linear  : register(s0);
@@ -150,9 +150,9 @@ float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir)
     // Convert NDC [-1,1] to texture [0,1]; DX11 Y is already correct
     proj.xy = proj.xy * 0.5 + 0.5;
     proj.y  = 1.0 - proj.y;
-    if (proj.z > 1.0) return 0.0;
+    if (proj.z < 0.0 || proj.z > 1.0) return 0.0;
 
-    float bias  = max(0.005 * (1.0 - dot(normal, lightDir)), 0.0005);
+    float bias  = max(0.001 * (1.0 - dot(normal, lightDir)), 0.0001);
     float spread = 2.5;
 
     uint w, h;

@@ -41,7 +41,7 @@ DX11ShadowMap::DX11ShadowMap(int width, int height)
     smpd.BorderColor[1]       = 1.0f;
     smpd.BorderColor[2]       = 1.0f;
     smpd.BorderColor[3]       = 1.0f;
-    smpd.ComparisonFunc       = D3D11_COMPARISON_LESS_EQUAL;
+    smpd.ComparisonFunc       = D3D11_COMPARISON_GREATER_EQUAL;
     smpd.MaxLOD               = D3D11_FLOAT32_MAX;
     dev->CreateSamplerState(&smpd, &m_Sampler);
 }
