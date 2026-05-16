@@ -70,6 +70,11 @@ void GLShader::setVec3(const std::string& name, const glm::vec3& vec) const {
 void GLShader::setMat4(const std::string& name, const glm::mat4& mat) const {
     glUniformMatrix4fv(glGetUniformLocation(m_ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
 }
+void GLShader::setMat4Array(const std::string& name, const glm::mat4* mats, int count) const {
+    int loc = glGetUniformLocation(m_ID, name.c_str());
+    if (loc >= 0)
+        glUniformMatrix4fv(loc, count, GL_FALSE, &mats[0][0][0]);
+}
 
 std::string GLShader::readFile(const char* filePath) const {
     std::ifstream file(filePath);

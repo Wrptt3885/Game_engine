@@ -1,5 +1,5 @@
 #include "core/Application.h"
-#include "physics/JoltPhysicsSystem.h"
+#include "audio/AudioManager.h"
 #include "scripting/LuaManager.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -13,10 +13,11 @@ Application::Application() : m_Window(nullptr), m_LastFrameTime(0.0f) {
     InitRenderer();
     InitInput();
     m_Editor.Init(m_Window);   // after Input so ImGui chains onto Input's GLFW callbacks
-    JoltPhysicsSystem::Init();
+    m_PhysicsWorld.Init();
+    AudioManager::Init();
     LuaManager::Init();
     InitScene();
-    JoltPhysicsSystem::SyncBodiesFromScene(*m_CurrentScene);
+    m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
 }
 
 Application::~Application() {

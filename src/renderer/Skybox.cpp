@@ -1,4 +1,4 @@
-#include "graphics/Skybox.h"
+#include "renderer/Skybox.h"
 #include "renderer/Shader.h"
 #include <glad/gl.h>
 

@@ -6,11 +6,13 @@
 #include <memory>
 
 struct Vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 texCoord;
-    glm::vec3 tangent;
-    glm::vec3 bitangent;
+    glm::vec3  position;
+    glm::vec3  normal;
+    glm::vec2  texCoord;
+    glm::vec3  tangent;
+    glm::vec3  bitangent;
+    glm::uvec4 boneIds     = {0, 0, 0, 0};
+    glm::vec4  boneWeights = {1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 class Mesh {

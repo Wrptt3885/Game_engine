@@ -1,4 +1,4 @@
-#include "graphics/ShadowMap.h"
+#include "renderer/ShadowMap.h"
 #include <glad/gl.h>
 #include <iostream>
 

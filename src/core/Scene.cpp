@@ -1,7 +1,7 @@
 #include "core/Scene.h"
 #include "core/Camera.h"
-#include "graphics/Light.h"
-#include "graphics/LightData.h"
+#include "renderer/Light.h"
+#include "renderer/LightData.h"
 #include "renderer/Renderer.h"
 #include <algorithm>
 #include <iostream>

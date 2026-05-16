@@ -1,6 +1,7 @@
 #include "core/Application.h"
 #include "renderer/Renderer.h"
 #include "platform/Input.h"
+#include "audio/AudioManager.h"
 #include "scripting/LuaManager.h"
 #include "core/Scene.h"
 #include "core/Camera.h"
@@ -8,10 +9,9 @@
 #include "renderer/OBJLoader.h"
 #include "renderer/MeshRenderer.h"
 #include "renderer/Texture.h"
-#include "graphics/Light.h"
+#include "renderer/Light.h"
 #include "physics/Rigidbody.h"
 #include "physics/Collider.h"
-#include "physics/JoltPhysicsSystem.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 
@@ -130,7 +130,8 @@ void Application::Shutdown() {
     m_Editor.Shutdown();
     Renderer::Shutdown();
     LuaManager::Shutdown();
-    JoltPhysicsSystem::Shutdown();
+    AudioManager::Shutdown();
+    m_PhysicsWorld.Shutdown();
 #ifdef USE_DX11_BACKEND
     DX11Context::Shutdown();
 #endif

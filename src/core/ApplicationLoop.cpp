@@ -3,10 +3,12 @@
 #include "core/Scene.h"
 #include "core/GameObject.h"
 #include "renderer/Renderer.h"
+#include "renderer/SkinnedMeshRenderer.h"
 #include "platform/Input.h"
 #include "core/Camera.h"
-#include "graphics/Light.h"
-#include "physics/JoltPhysicsSystem.h"
+#include "renderer/Light.h"
+#include "audio/AudioManager.h"
+#include "audio/AudioListener.h"
 #include "scripting/LuaManager.h"
 #include "ui/UICanvas.h"
 #include <GLFW/glfw3.h>
@@ -57,6 +59,12 @@ void Application::ProcessInput(float deltaTime) {
     m_LastMousePos  = mousePos;
     m_RMBWasPressed = rmb;
 
+    // Always clear movement each frame so animation returns to idle if keyboard is captured
+    if (m_IsPlaying) {
+        m_CharMoveDir   = glm::vec3(0.0f);
+        m_CharSprinting = false;
+    }
+
     if (!m_Editor.WantsCaptureKeyboard()) {
         if (m_IsPlaying) {
             glm::vec3 fwd = m_Camera->GetLookForward();
@@ -64,14 +72,14 @@ void Application::ProcessInput(float deltaTime) {
             if (glm::length(fwd) > 0.001f) fwd = glm::normalize(fwd);
             glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
 
-            m_CharMoveDir = glm::vec3(0.0f);
             if (Input::IsKeyPressed(GLFW_KEY_W)) m_CharMoveDir += fwd;
             if (Input::IsKeyPressed(GLFW_KEY_S)) m_CharMoveDir -= fwd;
             if (Input::IsKeyPressed(GLFW_KEY_A)) m_CharMoveDir -= right;
             if (Input::IsKeyPressed(GLFW_KEY_D)) m_CharMoveDir += right;
             if (glm::length(m_CharMoveDir) > 0.001f)
                 m_CharMoveDir = glm::normalize(m_CharMoveDir);
-            m_CharJump = Input::IsKeyDown(GLFW_KEY_SPACE);
+            m_CharJump      = Input::IsKeyDown(GLFW_KEY_SPACE);
+            m_CharSprinting = Input::IsKeyPressed(GLFW_KEY_LEFT_SHIFT);
         } else {
             float speed = m_FlySpeed * deltaTime;
             if (Input::IsKeyPressed(GLFW_KEY_LEFT_SHIFT)) speed *= 3.0f;
@@ -103,22 +111,29 @@ void Application::Update(float deltaTime) {
     if (m_Editor.ConsumePlayRequest()) StartPlay();
     if (m_Editor.ConsumeStopRequest()) StopPlay();
 
-    if (m_IsPlaying && JoltPhysicsSystem::HasCharacter()) {
-        JoltPhysicsSystem::MoveCharacter(deltaTime, m_CharMoveDir, m_CharJump);
+    if (m_IsPlaying && m_PhysicsWorld.HasCharacter()) {
+        if (m_CharJump) m_CharJumpTimer = 0.6f;
+        m_CharJumpTimer = std::max(0.0f, m_CharJumpTimer - deltaTime);
+        bool wasJumping = m_CharJumpTimer > 0.0f;
+
+        m_PhysicsWorld.MoveCharacter(deltaTime, m_CharMoveDir, m_CharJump);
         m_CharJump = false;
 
-        glm::vec3 charPos = JoltPhysicsSystem::GetCharacterPosition();
+        glm::vec3 charPos = m_PhysicsWorld.GetCharacterPosition();
         if (glm::length(m_CharMoveDir) > 0.001f)
             m_CharFacingYaw = atan2(m_CharMoveDir.x, m_CharMoveDir.z);
         glm::quat facing = glm::angleAxis(m_CharFacingYaw, glm::vec3(0.0f, 1.0f, 0.0f));
 
-        if (m_CharacterBody) {
-            m_CharacterBody->GetTransform().position = charPos + glm::vec3(0.0f, -0.3f, 0.0f);
-            m_CharacterBody->GetTransform().rotation = facing;
-        }
-        if (m_CharacterHead) {
-            m_CharacterHead->GetTransform().position = charPos + glm::vec3(0.0f, 0.75f, 0.0f);
-            m_CharacterHead->GetTransform().rotation = facing;
+        if (m_CharacterMesh) {
+            float yOff = -1.1f;
+            auto smr = m_CharacterMesh->GetComponent<SkinnedMeshRenderer>();
+            if (smr) {
+                yOff = smr->GetPhysicsYOffset();
+                smr->EvaluateRules(glm::length(m_CharMoveDir) > 0.001f,
+                                   m_CharSprinting, wasJumping);
+            }
+            m_CharacterMesh->GetTransform().position = charPos + glm::vec3(0.0f, yOff, 0.0f);
+            m_CharacterMesh->GetTransform().rotation = facing;
         }
         m_Camera->SetFollowCamera(charPos + glm::vec3(0.0f, 0.8f, 0.0f), 5.0f, 1.5f);
     }
@@ -128,7 +143,28 @@ void Application::Update(float deltaTime) {
 
     if (m_CurrentScene) {
         m_CurrentScene->Update(deltaTime);
-        if (m_IsPlaying) JoltPhysicsSystem::Update(*m_CurrentScene, deltaTime);
+        if (m_IsPlaying) m_PhysicsWorld.Update(*m_CurrentScene, deltaTime);
+    }
+
+    // Update audio listener — prefer AudioListener component, fall back to camera
+    {
+        bool listenerSet = false;
+        if (m_CurrentScene) {
+            for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
+                auto obj = m_CurrentScene->GetGameObject(i);
+                if (obj && obj->IsActive() && obj->GetComponent<AudioListener>()) {
+                    // AudioListener::Update already calls SetListenerPosition
+                    listenerSet = true;
+                    break;
+                }
+            }
+        }
+        if (!listenerSet && m_Camera) {
+            AudioManager::SetListenerPosition(
+                m_Camera->GetPosition(),
+                m_Camera->GetLookForward(),
+                glm::vec3(0.0f, 1.0f, 0.0f));
+        }
     }
 }
 

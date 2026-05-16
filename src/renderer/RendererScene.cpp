@@ -2,8 +2,8 @@
 #include "renderer/Mesh.h"
 #include "renderer/MeshRenderer.h"
 #include "core/Camera.h"
-#include "graphics/Material.h"
-#include "graphics/LightData.h"
+#include "renderer/Material.h"
+#include "renderer/LightData.h"
 #include <algorithm>
 
 void Renderer::BeginScene(const Camera& camera,
@@ -62,11 +62,19 @@ void Renderer::BeginScene(const Camera& camera,
 }
 
 void Renderer::DrawMesh(const Mesh& mesh, const glm::mat4& modelMatrix,
-                         const Material& material) {
+                         const Material& material,
+                         const glm::mat4* boneMatrices, int boneCount) {
     if (!s_Shader) return;
 
     s_Shader->setMat4("u_Model",      modelMatrix);
     s_Shader->setVec3("u_Color",      material.albedo);
+
+    if (boneMatrices && boneCount > 0) {
+        s_Shader->setBool    ("u_UseSkinning",     true);
+        s_Shader->setMat4Array("u_BoneMatrices[0]", boneMatrices, std::min(boneCount, 100));
+    } else {
+        s_Shader->setBool("u_UseSkinning", false);
+    }
 
     bool useTexture   = material.texture   && material.texture->IsLoaded();
     bool useNormalMap = material.normalMap && material.normalMap->IsLoaded();

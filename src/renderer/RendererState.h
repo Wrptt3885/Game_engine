@@ -58,8 +58,8 @@ extern ID3D11ShaderResourceView* s_BloomB_SRV;
 extern int                       s_Bloom_W, s_Bloom_H;
 #else
 #  include "rhi/opengl/GLShader.h"
-#  include "graphics/ShadowMap.h"
-#  include "graphics/Skybox.h"
+#  include "renderer/ShadowMap.h"
+#  include "renderer/Skybox.h"
 #  include <glad/gl.h>
 #  include <GLFW/glfw3.h>
 

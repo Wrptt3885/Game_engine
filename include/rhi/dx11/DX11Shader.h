@@ -18,7 +18,8 @@ public:
     void setInt  (const std::string& name, int   value) const override;
     void setFloat(const std::string& name, float value) const override;
     void setVec3 (const std::string& name, const glm::vec3& v) const override;
-    void setMat4 (const std::string& name, const glm::mat4& m) const override;
+    void setMat4     (const std::string& name, const glm::mat4& m) const override;
+    void setMat4Array(const std::string& name, const glm::mat4* mats, int count) const override;
 
 public:
     struct VarInfo { bool isVS; UINT offset; UINT size; };
@@ -34,13 +35,16 @@ private:
     ID3D11VertexShader* m_VS = nullptr;
     ID3D11PixelShader*  m_PS = nullptr;
     ID3D11InputLayout*  m_IL = nullptr;
-    ID3D11Buffer*       m_CB_VS = nullptr;
-    ID3D11Buffer*       m_CB_PS = nullptr;
+    ID3D11Buffer*       m_CB_VS    = nullptr;
+    ID3D11Buffer*       m_CB_PS    = nullptr;
+    ID3D11Buffer*       m_CB_Bones = nullptr;
 
     mutable std::vector<uint8_t> m_VSData;
     mutable std::vector<uint8_t> m_PSData;
-    mutable bool                 m_VSDirty = true;
-    mutable bool                 m_PSDirty = true;
+    mutable std::vector<uint8_t> m_BonesData;
+    mutable bool                 m_VSDirty   = true;
+    mutable bool                 m_PSDirty   = true;
+    mutable bool                 m_BonesDirty = true;
 
     std::unordered_map<std::string, VarInfo> m_Vars;
 };

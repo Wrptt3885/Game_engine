@@ -1,7 +1,7 @@
 #pragma once
 
-#include "graphics/Material.h"
-#include "graphics/LightData.h"
+#include "renderer/Material.h"
+#include "renderer/LightData.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -34,7 +34,8 @@ public:
                            const std::vector<PointLightData>& pointLights);
 
     static void DrawMesh(const Mesh& mesh, const glm::mat4& modelMatrix,
-                         const Material& material = Material::Default());
+                         const Material& material = Material::Default(),
+                         const glm::mat4* boneMatrices = nullptr, int boneCount = 0);
 
     static void DrawSkybox(const Camera& camera, const glm::vec3& sunDirection);
 

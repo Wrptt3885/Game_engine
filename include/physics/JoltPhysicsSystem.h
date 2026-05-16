@@ -20,6 +20,10 @@ public:
     static void      MoveCharacter(float dt, const glm::vec3& wishDir, bool jump);
     static glm::vec3 GetCharacterPosition();
     static bool      HasCharacter();
+    static bool      IsCharacterOnGround();
+    // Raycast straight down from 'from'; returns true and sets outHitY on hit.
+    static bool      RaycastGround(const glm::vec3& from, float maxDist, float& outHitY);
+    static void      SnapCharacterToGround(float targetY);
 
     static void RemoveBody(class GameObject* go);
 

@@ -48,6 +48,15 @@ cbuffer CBLighting : register(b0)
     float3   _pad3;
 };
 
+// ---- Skinning ---------------------------------------------------------------
+
+cbuffer CBSkinning : register(b2)
+{
+    int      u_UseSkinning;
+    float3   _skinPad;
+    float4x4 u_BoneMatrices[100];
+};
+
 // ---- Textures / Samplers ----------------------------------------------------
 
 Texture2D    t_Diffuse      : register(t0);
@@ -62,11 +71,13 @@ SamplerState s_Shadow       : register(s1);
 
 struct VSIn
 {
-    float3 position  : POSITION;
-    float3 normal    : NORMAL;
-    float2 texCoord  : TEXCOORD;
-    float3 tangent   : TANGENT;
-    float3 bitangent : BITANGENT;
+    float3 position    : POSITION;
+    float3 normal      : NORMAL;
+    float2 texCoord    : TEXCOORD;
+    float3 tangent     : TANGENT;
+    float3 bitangent   : BITANGENT;
+    uint4  boneIds     : BLENDINDICES;
+    float4 boneWeights : BLENDWEIGHT;
 };
 
 struct VSOut
@@ -84,15 +95,31 @@ VSOut VS(VSIn input)
 {
     VSOut output;
 
-    float4 worldPos          = mul(u_Model, float4(input.position, 1.0));
+    float4 localPos    = float4(input.position, 1.0);
+    float3 localNormal  = input.normal;
+    float3 localTangent = input.tangent;
+
+    [branch]
+    if (u_UseSkinning) {
+        float4x4 skinMat = input.boneWeights.x * u_BoneMatrices[input.boneIds.x]
+                         + input.boneWeights.y * u_BoneMatrices[input.boneIds.y]
+                         + input.boneWeights.z * u_BoneMatrices[input.boneIds.z]
+                         + input.boneWeights.w * u_BoneMatrices[input.boneIds.w];
+        float3x3 skinRot  = (float3x3)skinMat;
+        localPos     = mul(skinMat,  float4(input.position, 1.0));
+        localNormal   = mul(skinRot, input.normal);
+        localTangent  = mul(skinRot, input.tangent);
+    }
+
+    float4 worldPos          = mul(u_Model, localPos);
     output.fragPos           = worldPos.xyz;
     output.texCoord          = input.texCoord;
     output.fragPosLightSpace = mul(u_LightSpaceMatrix, worldPos);
 
     float3x3 normalMat = (float3x3)u_Model;
 
-    float3 N = normalize(mul(normalMat, input.normal));
-    float3 T = normalize(mul(normalMat, input.tangent));
+    float3 N = normalize(mul(normalMat, localNormal));
+    float3 T = normalize(mul(normalMat, localTangent));
     T = normalize(T - dot(T, N) * N);
     float3 B = cross(N, T);
 

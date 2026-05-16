@@ -54,6 +54,19 @@ set(JPH_USE_CPU_COMPUTE      OFF CACHE BOOL "" FORCE)
 set(CPP_RTTI_ENABLED         ON  CACHE BOOL "" FORCE)
 add_subdirectory(vendor/JoltPhysics/Build JoltBuild)
 
+# ---- ufbx FBX loader --------------------------------------------------------
+include(FetchContent)
+FetchContent_Declare(ufbx
+    URL      https://github.com/bqqbarbhg/ufbx/archive/refs/tags/v0.14.0.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(ufbx)
+if(NOT ufbx_POPULATED)
+    FetchContent_Populate(ufbx)
+endif()
+# Compile ufbx.c directly as a C source (required for correct symbol linkage)
+set(UFBX_C_SOURCE "${ufbx_SOURCE_DIR}/ufbx.c")
+
 # ---- Lua 5.4 + sol2 --------------------------------------------------------
 # Requires: pacman -S --noconfirm mingw-w64-x86_64-lua
 set(LUA_STATIC "${MSYS2_ROOT}/lib/liblua.a")
@@ -96,7 +109,7 @@ endif()
 set(IMGUIZMO_DIR ${CMAKE_SOURCE_DIR}/vendor/imguizmo)
 set(IMGUIZMO_SOURCES ${IMGUIZMO_DIR}/ImGuizmo.cpp)
 
-add_executable(MyEngine ${SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES})
+add_executable(MyEngine ${SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${UFBX_C_SOURCE})
 
 # ---- Includes ---------------------------------------------------------------
 target_include_directories(MyEngine PRIVATE
@@ -105,6 +118,7 @@ target_include_directories(MyEngine PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${IMGUIZMO_DIR}
+    ${ufbx_SOURCE_DIR}
 )
 
 # ---- Definitions ------------------------------------------------------------

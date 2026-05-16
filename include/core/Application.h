@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/EditorLayer.h"
+#include "editor/EditorLayer.h"
+#include "physics/PhysicsWorld.h"
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <memory>
@@ -43,7 +44,8 @@ private:
     std::shared_ptr<Light>      m_Sun;
     std::shared_ptr<GameObject> m_Floor;
 
-    EditorLayer m_Editor;
+    EditorLayer  m_Editor;
+    PhysicsWorld m_PhysicsWorld;
 
     glm::vec2   m_LastMousePos  = glm::vec2(0.0f);
     bool        m_RMBWasPressed = false;
@@ -53,9 +55,10 @@ private:
     std::string m_SceneSnapshot;
 
     glm::vec3   m_CharMoveDir    = glm::vec3(0.0f);
-    bool        m_CharJump       = false;
+    bool        m_CharJump        = false;
+    bool        m_CharSprinting   = false;
+    float       m_CharJumpTimer   = 0.0f;
     float       m_CharFacingYaw  = 0.0f;
 
-    std::shared_ptr<GameObject> m_CharacterBody;
-    std::shared_ptr<GameObject> m_CharacterHead;
+    std::shared_ptr<GameObject> m_CharacterMesh;
 };

@@ -85,13 +85,21 @@ DX11Shader::DX11Shader(const char* vsPath, const char* psPath) {
         ReflectCBuffer(vsBlob, true);
 
         D3D11_INPUT_ELEMENT_DESC layout[] = {
-            {"POSITION",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position),  D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"NORMAL",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal),    D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"TEXCOORD",  0, DXGI_FORMAT_R32G32_FLOAT,    0, offsetof(Vertex, texCoord),  D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"TANGENT",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, tangent),   D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"BITANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, bitangent), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, position),    D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, normal),      D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, offsetof(Vertex, texCoord),    D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TANGENT",      0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, tangent),     D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"BITANGENT",    0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, bitangent),   D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,  0, offsetof(Vertex, boneIds),     D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, boneWeights), D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
-        dev->CreateInputLayout(layout, 5, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_IL);
+        dev->CreateInputLayout(layout, 7, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_IL);
+
+        // Create dedicated bone matrix cbuffer (slot b2, 16 + 100*64 = 6416 bytes)
+        static constexpr UINT kBonesSize = 16 + 100 * 64; // int + pad + 100 mat4
+        m_BonesData.assign(kBonesSize, 0);
+        CreateCBuffer(kBonesSize, &m_CB_Bones);
+
         vsBlob->Release();
     }
 
@@ -110,11 +118,12 @@ DX11Shader::DX11Shader(const char* vsPath, const char* psPath) {
 }
 
 DX11Shader::~DX11Shader() {
-    if (m_VS)    { m_VS->Release();    m_VS    = nullptr; }
-    if (m_PS)    { m_PS->Release();    m_PS    = nullptr; }
-    if (m_IL)    { m_IL->Release();    m_IL    = nullptr; }
-    if (m_CB_VS) { m_CB_VS->Release(); m_CB_VS = nullptr; }
-    if (m_CB_PS) { m_CB_PS->Release(); m_CB_PS = nullptr; }
+    if (m_VS)       { m_VS->Release();       m_VS       = nullptr; }
+    if (m_PS)       { m_PS->Release();       m_PS       = nullptr; }
+    if (m_IL)       { m_IL->Release();       m_IL       = nullptr; }
+    if (m_CB_VS)    { m_CB_VS->Release();    m_CB_VS    = nullptr; }
+    if (m_CB_PS)    { m_CB_PS->Release();    m_CB_PS    = nullptr; }
+    if (m_CB_Bones) { m_CB_Bones->Release(); m_CB_Bones = nullptr; }
 }
 
 void DX11Shader::CompileShader(const char* path, const char* entry,
@@ -221,8 +230,18 @@ void DX11Shader::FlushCBuffers() const {
     upload(m_CB_VS, m_VSData, m_VSDirty);
     upload(m_CB_PS, m_PSData, m_PSDirty);
 
-    if (m_CB_VS) ctx->VSSetConstantBuffers(0, 1, &m_CB_VS);
-    if (m_CB_PS) ctx->PSSetConstantBuffers(0, 1, &m_CB_PS);
+    if (m_CB_Bones && m_BonesDirty) {
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(ctx->Map(m_CB_Bones, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            memcpy(mapped.pData, m_BonesData.data(), m_BonesData.size());
+            ctx->Unmap(m_CB_Bones, 0);
+        }
+        m_BonesDirty = false;
+    }
+
+    if (m_CB_VS)    ctx->VSSetConstantBuffers(0, 1, &m_CB_VS);
+    if (m_CB_PS)    ctx->PSSetConstantBuffers(0, 1, &m_CB_PS);
+    if (m_CB_Bones) ctx->VSSetConstantBuffers(2, 1, &m_CB_Bones);
 }
 
 void DX11Shader::use() const {
@@ -234,8 +253,22 @@ void DX11Shader::use() const {
 }
 
 void DX11Shader::setBool(const std::string& name, bool value) const {
+    if (name == "u_UseSkinning" && !m_BonesData.empty()) {
+        int v = value ? 1 : 0;
+        memcpy(m_BonesData.data(), &v, sizeof(int));
+        m_BonesDirty = true;
+        return;
+    }
     int v = value ? 1 : 0;
     WriteVar(name, &v, sizeof(int));
+}
+
+void DX11Shader::setMat4Array(const std::string& name, const glm::mat4* mats, int count) const {
+    if (m_BonesData.empty() || !mats || count <= 0) return;
+    int n = std::min(count, 100);
+    // Offset 16 = past the int u_UseSkinning + 12-byte pad
+    memcpy(m_BonesData.data() + 16, mats, n * sizeof(glm::mat4));
+    m_BonesDirty = true;
 }
 void DX11Shader::setInt(const std::string& name, int value) const {
     WriteVar(name, &value, sizeof(int));

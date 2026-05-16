@@ -2,11 +2,9 @@
 #include "core/SceneSerializer.h"
 #include "core/Scene.h"
 #include "core/Camera.h"
-#include "renderer/OBJLoader.h"
-#include "renderer/MeshRenderer.h"
-#include "graphics/Material.h"
-#include "graphics/Light.h"
-#include "physics/JoltPhysicsSystem.h"
+#include "renderer/SkinnedMeshRenderer.h"
+#include "renderer/Light.h"
+#include "audio/AudioSource.h"
 #include "scripting/LuaManager.h"
 #include "scripting/LuaScript.h"
 
@@ -19,44 +17,62 @@ static const std::string SCENE_PATH_PM = std::string(ASSET_DIR) + "/scenes/MainS
 void Application::StartPlay() {
     m_SceneSnapshot = SceneSerializer::SaveToString(*m_CurrentScene);
     m_IsPlaying = true;
-    JoltPhysicsSystem::SyncBodiesFromScene(*m_CurrentScene);
+    m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
 
-    glm::vec3 camPos  = m_Camera->GetPosition();
-    glm::vec3 spawnPos(camPos.x, std::max(camPos.y, 2.0f), camPos.z);
-    JoltPhysicsSystem::CreateCharacter(spawnPos);
-
-    // Visible character: body (blue) + head (skin)
-    auto cubeMesh = OBJLoader::Load(ASSET_DIR "/models/cube.obj");
-
-    m_CharacterBody = m_CurrentScene->CreateGameObject("__CharBody");
-    {
-        auto mr = m_CharacterBody->AddComponent<MeshRenderer>();
-        mr->SetMesh(cubeMesh);
-        Material mat;
-        mat.albedo    = glm::vec3(0.25f, 0.50f, 0.92f);
-        mat.roughness = 0.8f;
-        mr->SetMaterial(mat);
-        m_CharacterBody->GetTransform().scale = glm::vec3(0.6f, 1.6f, 0.6f);
+    // Find first SkinnedMeshRenderer in scene as the player character
+    m_CharacterMesh = nullptr;
+    for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
+        auto obj = m_CurrentScene->GetGameObject(i);
+        if (obj && obj->GetComponent<SkinnedMeshRenderer>()) {
+            m_CharacterMesh = obj;
+            break;
+        }
     }
 
-    m_CharacterHead = m_CurrentScene->CreateGameObject("__CharHead");
+    glm::vec3 spawnPos;
+    if (m_CharacterMesh) {
+        glm::vec3 meshPos = m_CharacterMesh->GetTransform().position;
+        float yOff = -1.1f;
+        if (auto smr = m_CharacterMesh->GetComponent<SkinnedMeshRenderer>())
+            yOff = smr->GetPhysicsYOffset();
+        // yOff is negative (e.g. -1.1), so meshPos.y - yOff = meshPos.y + 1.1 = capsule centre
+        spawnPos = glm::vec3(meshPos.x, meshPos.y - yOff, meshPos.z);
+    } else {
+        glm::vec3 camPos = m_Camera->GetPosition();
+        spawnPos = glm::vec3(camPos.x, std::max(camPos.y, 2.0f), camPos.z);
+    }
+    m_PhysicsWorld.CreateCharacter(spawnPos);
+
+    // Raycast straight down to find the nearest floor and snap the character
+    // there immediately, so it doesn't float when the mesh was placed high.
     {
-        auto mr = m_CharacterHead->AddComponent<MeshRenderer>();
-        mr->SetMesh(cubeMesh);
-        Material mat;
-        mat.albedo    = glm::vec3(0.90f, 0.76f, 0.65f);
-        mat.roughness = 0.9f;
-        mr->SetMaterial(mat);
-        m_CharacterHead->GetTransform().scale = glm::vec3(0.5f, 0.5f, 0.5f);
+        // Capsule half-total = halfHeight + radius = 0.8 + 0.3 = 1.1
+        constexpr float kCapsuleHalf = 1.1f;
+        float floorY = 0.0f;
+        // Cast from slightly above spawn (avoids self-intersection with floor at same Y)
+        if (m_PhysicsWorld.RaycastGround(
+                glm::vec3(spawnPos.x, spawnPos.y + 0.5f, spawnPos.z),
+                500.0f, floorY)) {
+            float targetY = floorY + kCapsuleHalf;
+            if (targetY < spawnPos.y)  // only snap down, never up
+                m_PhysicsWorld.SnapCharacterToGround(targetY);
+        }
     }
 
     glm::vec3 fwd = m_Camera->GetLookForward();
     m_CharFacingYaw = (fwd.x != 0.0f || fwd.z != 0.0f)
         ? atan2(fwd.x, fwd.z) : 0.0f;
 
-    m_CurrentScene->SetDestroyCallback([](GameObject* go) {
-        JoltPhysicsSystem::RemoveBody(go);
+    m_CurrentScene->SetDestroyCallback([this](GameObject* go) {
+        m_PhysicsWorld.RemoveBody(go);
     });
+
+    // Trigger OnPlayStart on every AudioSource
+    for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
+        auto obj = m_CurrentScene->GetGameObject(i);
+        if (obj)
+            if (auto as = obj->GetComponent<AudioSource>()) as->OnPlayStart();
+    }
 
     // Enable Lua play mode and call Awake on every LuaScript
     LuaManager::SetPlayMode(true);
@@ -70,19 +86,26 @@ void Application::StartPlay() {
 }
 
 void Application::StopPlay() {
+    // Stop all audio before restoring scene
+    if (m_CurrentScene) {
+        for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
+            auto obj = m_CurrentScene->GetGameObject(i);
+            if (obj)
+                if (auto as = obj->GetComponent<AudioSource>()) as->Stop();
+        }
+    }
     LuaManager::SetPlayMode(false);
-    JoltPhysicsSystem::DestroyCharacter();
+    m_PhysicsWorld.DestroyCharacter();
     if (m_CurrentScene) m_CurrentScene->ClearDestroyCallback();
-    JoltPhysicsSystem::ClearBodies();
+    m_PhysicsWorld.ClearBodies();
     m_Editor.ClearSelection();
-    m_CharacterBody = nullptr;
-    m_CharacterHead = nullptr;
+    m_CharacterMesh = nullptr;
 
     auto restored = SceneSerializer::LoadFromString(m_SceneSnapshot);
     if (restored) {
         m_CurrentScene = restored;
         ReconnectSceneReferences();
-        JoltPhysicsSystem::SyncBodiesFromScene(*m_CurrentScene);
+        m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
     }
     m_IsPlaying = false;
     std::cout << "[PlayMode] Stopped\n";

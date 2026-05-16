@@ -3,13 +3,16 @@
 #include "core/GameObject.h"
 #include "core/Transform.h"
 #include "renderer/MeshRenderer.h"
+#include "renderer/SkinnedMeshRenderer.h"
 #include "physics/Rigidbody.h"
 #include "physics/Collider.h"
-#include "graphics/Light.h"
+#include "renderer/Light.h"
 #include "renderer/OBJLoader.h"
 #include "renderer/GLTFLoader.h"
 #include "renderer/Texture.h"
-#include "graphics/Material.h"
+#include "renderer/Material.h"
+#include "audio/AudioSource.h"
+#include "audio/AudioListener.h"
 #include "scripting/LuaScript.h"
 #include "ui/UILabel.h"
 #include "ui/UIImage.h"
@@ -87,13 +90,47 @@ static json BuildSceneJson(Scene& scene) {
             };
             jo["components"].push_back(jc);
         }
+        if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
+            json jc;
+            jc["type"] = "SkinnedMeshRenderer";
+            jc["mesh"] = smr->GetMesh() ? ToRelative(smr->GetMesh()->GetPath()) : "";
+            jc["clip"]         = smr->GetCurrentClip();
+            jc["loop"]         = smr->GetLoop();
+            jc["speed"]        = smr->GetSpeed();
+            jc["physicsYOffset"] = smr->GetPhysicsYOffset();
+            json jrules = json::array();
+            for (const auto& r : smr->GetAnimRules())
+                jrules.push_back({{"clip", r.clipIndex}, {"trigger", (int)r.trigger}});
+            jc["animRules"] = jrules;
+            json jextra = json::array();
+            for (const auto& p : smr->GetExtraClipFiles())
+                jextra.push_back(ToRelative(p));
+            jc["extraClipFiles"] = jextra;
+            const Material& mat = smr->GetMaterial();
+            jc["material"] = {
+                {"albedo",       V3(mat.albedo)},
+                {"roughness",    mat.roughness},
+                {"metallic",     mat.metallic},
+                {"texture",      mat.texture   ? ToRelative(mat.texture->GetPath())   : ""},
+                {"normalMap",    mat.normalMap  ? ToRelative(mat.normalMap->GetPath()) : ""},
+                {"worldSpaceUV", mat.worldSpaceUV},
+                {"worldUVTile",  mat.worldUVTile}
+            };
+            jo["components"].push_back(jc);
+        }
         if (auto rb = obj->GetComponent<Rigidbody>()) {
             jo["components"].push_back({
                 {"type",        "Rigidbody"},
                 {"mass",        rb->mass},
                 {"useGravity",  rb->useGravity},
-                {"friction",    rb->friction},
-                {"restitution", rb->restitution}
+                {"friction",    rb->material.friction},
+                {"restitution", rb->material.restitution},
+                {"density",     rb->material.density},
+                {"hardness",    rb->material.hardness},
+                {"ior",         rb->material.ior},
+                {"transparency",rb->material.transparency},
+                {"absorbance",  rb->material.absorbance},
+                {"phase",       static_cast<int>(rb->material.phase)}
             });
         }
         if (auto col = obj->GetComponent<Collider>()) {
@@ -119,6 +156,22 @@ static json BuildSceneJson(Scene& scene) {
                 {"type", "LuaScript"},
                 {"path", ls->GetPath().empty() ? "" : ToRelative(ls->GetPath())}
             });
+        }
+        if (auto as = obj->GetComponent<AudioSource>()) {
+            jo["components"].push_back({
+                {"type",        "AudioSource"},
+                {"clip",        as->clipPath.empty() ? "" : ToRelative(as->clipPath)},
+                {"volume",      as->volume},
+                {"pitch",       as->pitch},
+                {"loop",        as->loop},
+                {"playOnStart", as->playOnStart},
+                {"spatial",     as->spatial},
+                {"minDistance", as->minDistance},
+                {"maxDistance", as->maxDistance}
+            });
+        }
+        if (obj->GetComponent<AudioListener>()) {
+            jo["components"].push_back({{"type", "AudioListener"}});
         }
 
         root["gameObjects"].push_back(jo);
@@ -202,12 +255,64 @@ static std::shared_ptr<Scene> SceneFromJson(const json& root) {
                     mr->SetMaterial(mat);
                 }
             }
+            else if (type == "SkinnedMeshRenderer") {
+                auto smr = obj->AddComponent<SkinnedMeshRenderer>();
+                std::string meshRel = jc.value("mesh", "");
+                if (!meshRel.empty()) {
+                    auto data = GLTFLoader::LoadSkinnedMesh(ToAbsolute(meshRel));
+                    smr->SetMesh(data.mesh);
+                    smr->SetSkeleton(data.skeleton);
+                    smr->SetClips(std::move(data.clips));
+                    smr->PlayClip(jc.value("clip", 0));
+                    smr->SetLoop(jc.value("loop", true));
+                    smr->SetSpeed(jc.value("speed", 1.0f));
+                    smr->SetPhysicsYOffset(jc.value("physicsYOffset", -1.1f));
+                    if (jc.contains("extraClipFiles")) {
+                        for (const auto& jp : jc["extraClipFiles"]) {
+                            std::string absPath = ToAbsolute(jp.get<std::string>());
+                            auto bundle = GLTFLoader::LoadClipsFromFile(absPath);
+                            if (!bundle.clips.empty())
+                                smr->AddClipsFromFile(absPath,
+                                                      bundle.skeleton,
+                                                      std::move(bundle.clips));
+                        }
+                    }
+                    if (jc.contains("animRules")) {
+                        for (const auto& jr : jc["animRules"]) {
+                            SkinnedMeshRenderer::AnimRule r;
+                            r.clipIndex = jr.value("clip",    -1);
+                            r.trigger   = (SkinnedMeshRenderer::AnimRule::Trigger)jr.value("trigger", 0);
+                            smr->GetAnimRules().push_back(r);
+                        }
+                    }
+                    if (jc.contains("material")) {
+                        const auto& jm = jc["material"];
+                        Material mat;
+                        if (jm.contains("albedo"))    mat.albedo    = ToV3(jm["albedo"]);
+                        if (jm.contains("roughness")) mat.roughness = jm["roughness"].get<float>();
+                        if (jm.contains("metallic"))  mat.metallic  = jm["metallic"].get<float>();
+                        std::string texRel  = jm.value("texture",   "");
+                        std::string normRel = jm.value("normalMap", "");
+                        if (!texRel.empty())  mat.texture   = Texture::Create(ToAbsolute(texRel));
+                        if (!normRel.empty()) mat.normalMap = Texture::Create(ToAbsolute(normRel));
+                        mat.worldSpaceUV = jm.value("worldSpaceUV", false);
+                        mat.worldUVTile  = jm.value("worldUVTile",  0.1f);
+                        smr->SetMaterial(mat);
+                    }
+                }
+            }
             else if (type == "Rigidbody") {
                 auto rb = obj->AddComponent<Rigidbody>();
-                rb->mass        = jc.value("mass",        1.0f);
-                rb->useGravity  = jc.value("useGravity",  true);
-                rb->friction    = jc.value("friction",    0.2f);
-                rb->restitution = jc.value("restitution", 0.0f);
+                rb->mass            = jc.value("mass",        1.0f);
+                rb->useGravity      = jc.value("useGravity",  true);
+                rb->material.friction    = jc.value("friction",    0.2f);
+                rb->material.restitution = jc.value("restitution", 0.0f);
+                rb->material.density     = jc.value("density",     1000.0f);
+                rb->material.hardness    = jc.value("hardness",    1.0f);
+                rb->material.ior         = jc.value("ior",         1.0f);
+                rb->material.transparency= jc.value("transparency",0.0f);
+                rb->material.absorbance  = jc.value("absorbance",  0.0f);
+                rb->material.phase       = static_cast<PhysicsMaterial::Phase>(jc.value("phase", 0));
             }
             else if (type == "Collider") {
                 auto col = obj->AddComponent<Collider>();
@@ -228,6 +333,21 @@ static std::shared_ptr<Scene> SceneFromJson(const json& root) {
                 auto ls = obj->AddComponent<LuaScript>();
                 std::string pathRel = jc.value("path", "");
                 if (!pathRel.empty()) ls->SetPath(ToAbsolute(pathRel));
+            }
+            else if (type == "AudioSource") {
+                auto as = obj->AddComponent<AudioSource>();
+                std::string clipRel = jc.value("clip", "");
+                as->clipPath    = clipRel.empty() ? "" : ToAbsolute(clipRel);
+                as->volume      = jc.value("volume",      1.0f);
+                as->pitch       = jc.value("pitch",       1.0f);
+                as->loop        = jc.value("loop",        false);
+                as->playOnStart = jc.value("playOnStart", false);
+                as->spatial     = jc.value("spatial",     true);
+                as->minDistance = jc.value("minDistance", 1.0f);
+                as->maxDistance = jc.value("maxDistance", 50.0f);
+            }
+            else if (type == "AudioListener") {
+                obj->AddComponent<AudioListener>();
             }
         }
     }

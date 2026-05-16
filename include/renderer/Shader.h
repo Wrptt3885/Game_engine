@@ -13,7 +13,8 @@ public:
     virtual void setInt  (const std::string& name, int            value) const = 0;
     virtual void setFloat(const std::string& name, float          value) const = 0;
     virtual void setVec3 (const std::string& name, const glm::vec3& vec) const = 0;
-    virtual void setMat4 (const std::string& name, const glm::mat4& mat) const = 0;
+    virtual void setMat4     (const std::string& name, const glm::mat4& mat) const = 0;
+    virtual void setMat4Array(const std::string& name, const glm::mat4* mats, int count) const = 0;
 
     static std::shared_ptr<Shader> Create(const char* vertPath, const char* fragPath);
 };

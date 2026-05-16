@@ -39,6 +39,15 @@
 ### Assets
 - [x] OBJ import (tangent generation)
 - [x] GLTF/GLB import — node hierarchy, PBR materials, embedded textures
+- [x] FBX import (ufbx) — static mesh, skinned mesh, skeleton, animation clips
+
+### Skeletal Animation
+- [x] SkinnedMeshRenderer — bone matrices, GPU skinning (vertex shader)
+- [x] AnimationClip + JointTrack — translation/rotation/scale keyframes, slerp
+- [x] Skeleton — joint hierarchy, inverse bind matrices
+- [x] Animation state machine (EvaluateRules) — Idle/Moving/Sprinting/Jumping triggers
+- [x] Multi-clip support — AddClipsFromFile (joint remapping by name)
+- [x] Shadow pass skinning — SkinnedMeshRenderer renders correctly into depth map
 
 ### Debug
 - [x] D3D11 Debug Layer (cmake -DDX11_DEBUG=ON)
@@ -59,25 +68,26 @@
 - [x] Inspector panels for UILabel + UIImage
 - [x] Serialization (save/load UILabel + UIImage)
 
-### 2. Lua Scripting
-- [ ] รวม sol2 + Lua 5.4 ใน vendor/
-- [ ] LuaScript component — path + hot-reload
-- [ ] Bind Transform (read/write position/rotation/scale)
-- [ ] Bind Input (IsKeyPressed, IsMouseButtonPressed)
-- [ ] Bind GameObject (Find, Destroy, SetActive)
-- [ ] Bind Time (deltaTime, totalTime)
-- [ ] Update() + OnCollisionEnter() hooks จาก Lua
+### 2. Lua Scripting ✅
+- [x] รวม sol2 + Lua 5.4 ผ่าน FetchContent
+- [x] LuaScript component — path + hot-reload
+- [x] Bind Transform (read/write position/rotation/scale)
+- [x] Bind Input (IsKeyPressed, IsMouseButtonPressed)
+- [x] Bind GameObject (Find, Destroy, SetActive)
+- [x] Bind Time (deltaTime, totalTime)
+- [x] Update() + Awake() hooks จาก Lua
+- [x] LuaManager::SetPlayMode — enable/disable script execution
 
 ### 3. Scene Transitions
 - [ ] `Application::LoadScene(path)` — โหลด scene ใหม่แทนที่ปัจจุบัน
 - [ ] Scene stack / history (กลับ scene ก่อนหน้าได้)
 - [ ] Transition ใน play mode (ไม่ใช่แค่ editor)
 
-### 4. Audio
-- [ ] รวม miniaudio (single-header) ใน vendor/
-- [ ] AudioSource component — clip path, volume, loop, play/stop
-- [ ] AudioListener component (ผูกกับ camera position)
-- [ ] 3D positional audio (distance attenuation)
+### 4. Audio ✅
+- [x] รวม miniaudio (single-header) ใน vendor/
+- [x] AudioSource component — clip path, volume, pitch, loop, playOnStart, Play/Pause/Stop
+- [x] AudioListener component — ผูก listener position กับ GameObject; fallback เป็น camera
+- [x] 3D positional audio — distance attenuation, min/max distance, rolloff linear
 
 ---
 
@@ -100,3 +110,10 @@
 ### Scripting / Modding
 - [ ] Hot-reload Lua ขณะ play mode ทำงาน
 - [ ] Expose scene API ให้ครบ (CreateGameObject, AddComponent)
+
+### Hardware Ray Tracing (ระยะยาว)
+- [ ] ย้ายไป DX12 backend — Command Queue/List, Descriptor Heap, PSO, Root Signature
+- [ ] สร้าง BLAS/TLAS จาก scene geometry (acceleration structures)
+- [ ] DXR ray shaders — ray generation, closest-hit, miss (HLSL)
+- [ ] Hybrid rendering — rasterize primary + RT สำหรับ shadows/reflections/GI
+- [ ] **หมายเหตุ:** ต้องการ RTX 2000+ หรือ AMD RDNA2+ | DX11 + OpenGL สามารถตัดทิ้งได้เมื่อย้ายสำเร็จ

@@ -83,6 +83,7 @@ Lights supported per frame:
 - Ortho projection 100×100, range 1–150
 - Shadow RS: `CULL_FRONT` (peter-panning prevention)
 - Sampling: 16-sample Poisson disk PCF, spread 2.5 texels
+- **Skinning**: `RendererShadow` ตรวจ `SkinnedMeshRenderer` และอัปโหลด bone matrices (`u_BoneMatrices[100]`, `u_UseSkinning`) — shadow pass รองรับ skinned mesh ทั้ง OpenGL และ DX11
 
 ### Point Light Shadow (DX11)
 - R16_FLOAT cubemap, 512×512 per face

@@ -2,7 +2,7 @@
 
 #include "core/Component.h"
 #include "renderer/Mesh.h"
-#include "graphics/Material.h"
+#include "renderer/Material.h"
 #include <memory>
 
 class MeshRenderer : public Component {

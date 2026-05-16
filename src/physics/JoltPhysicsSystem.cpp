@@ -16,6 +16,8 @@ JPH_SUPPRESS_WARNINGS
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 
@@ -279,8 +281,8 @@ void JoltPhysicsSystem::SyncBodiesFromScene(Scene& scene) {
             bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
             bcs.mMassPropertiesOverride.mMass = rb->mass;
             bcs.mLinearVelocity = JPH::Vec3(rb->velocity.x, rb->velocity.y, rb->velocity.z);
-            bcs.mFriction    = rb->friction;
-            bcs.mRestitution = rb->restitution;
+            bcs.mFriction    = rb->material.friction;
+            bcs.mRestitution = rb->material.restitution;
         }
 
         JPH::BodyID id = bi.CreateAndAddBody(bcs, JPH::EActivation::Activate);
@@ -296,6 +298,9 @@ void JoltPhysicsSystem::SyncBodiesFromScene(Scene& scene) {
 
     s_Ctx->contactListener.SetReverseMap(&s_Ctx->reverseBodyMap);
     std::cout << "[JoltPhysicsSystem] Registered " << count << " bodies\n";
+
+    // Ensure static bodies are indexed in the broadphase tree for immediate raycast queries.
+    s_Ctx->physicsSystem->OptimizeBroadPhase();
 }
 
 void JoltPhysicsSystem::Update(Scene& scene, float dt) {
@@ -374,6 +379,41 @@ void JoltPhysicsSystem::DestroyCharacter() {
 
 bool JoltPhysicsSystem::HasCharacter() {
     return s_Ctx && s_Ctx->character != nullptr;
+}
+
+bool JoltPhysicsSystem::IsCharacterOnGround() {
+    if (!HasCharacter()) return false;
+    return s_Ctx->character->GetGroundState() ==
+           JPH::CharacterBase::EGroundState::OnGround;
+}
+
+bool JoltPhysicsSystem::RaycastGround(const glm::vec3& from, float maxDist, float& outHitY) {
+    if (!s_Ctx) return false;
+
+    // Shoot a ray straight down from 'from' by maxDist units.
+    JPH::RRayCast ray{
+        JPH::RVec3(from.x, from.y, from.z),
+        JPH::Vec3(0.0f, -maxDist, 0.0f)
+    };
+
+    JPH::RayCastResult hit;
+    // Default-constructed filters accept all broadphase layers and object layers.
+    bool found = s_Ctx->physicsSystem->GetNarrowPhaseQuery()
+        .CastRay(ray, hit, JPH::BroadPhaseLayerFilter{},
+                             JPH::ObjectLayerFilter{});
+
+    if (found) {
+        // Hit point Y = from.y + direction.y * fraction = from.y - maxDist * fraction
+        outHitY = from.y - maxDist * hit.mFraction;
+        return true;
+    }
+    return false;
+}
+
+void JoltPhysicsSystem::SnapCharacterToGround(float targetY) {
+    if (!HasCharacter()) return;
+    JPH::RVec3 p = s_Ctx->character->GetPosition();
+    s_Ctx->character->SetPosition(JPH::RVec3(p.GetX(), targetY, p.GetZ()));
 }
 
 glm::vec3 JoltPhysicsSystem::GetCharacterPosition() {

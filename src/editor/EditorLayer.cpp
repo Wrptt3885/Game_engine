@@ -1,4 +1,4 @@
-#include "core/EditorLayer.h"
+#include "editor/EditorLayer.h"
 #include "core/Scene.h"
 #include "core/Camera.h"
 #include "core/SceneSerializer.h"
@@ -169,5 +169,7 @@ void EditorLayer::Render(Scene& scene, Camera& camera, const std::string& sceneP
     DrawImportDialog();
     DrawTexturePickerDialog();
     DrawScriptPickerDialog();
+    DrawAddClipDialog();
+    DrawAudioPickerDialog();
     if (!isPlaying) DrawGizmo(camera);
 }

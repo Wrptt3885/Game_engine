@@ -63,6 +63,10 @@ void GLMesh::Setup() {
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, bitangent));
     glEnableVertexAttribArray(4);
+    glVertexAttribIPointer(5, 4, GL_UNSIGNED_INT, sizeof(Vertex), (void*)offsetof(Vertex, boneIds));
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneWeights));
+    glEnableVertexAttribArray(6);
 
     glBindVertexArray(0);
 }

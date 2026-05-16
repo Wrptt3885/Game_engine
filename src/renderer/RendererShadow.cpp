@@ -2,7 +2,8 @@
 #include "core/Scene.h"
 #include "core/GameObject.h"
 #include "renderer/MeshRenderer.h"
-#include "graphics/Light.h"
+#include "renderer/SkinnedMeshRenderer.h"
+#include "renderer/Light.h"
 #include <glm/gtc/matrix_transform.hpp>
 
 void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
@@ -27,11 +28,23 @@ void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
     for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
         auto obj = scene.GetGameObject(i);
         if (!obj || !obj->IsActive()) continue;
-        auto mr = obj->GetComponent<MeshRenderer>();
-        if (!mr || !mr->GetMesh()) continue;
-        s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
-        s_DepthShader->use();
-        mr->GetMesh()->Draw();
+
+        if (auto mr = obj->GetComponent<MeshRenderer>()) {
+            if (!mr->GetMesh()) continue;
+            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+            s_DepthShader->setBool("u_UseSkinning", false);
+            s_DepthShader->use();
+            mr->GetMesh()->Draw();
+        } else if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
+            if (!smr->GetMesh()) continue;
+            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+            s_DepthShader->setBool("u_UseSkinning", true);
+            const auto& bones = smr->GetBoneMatrices();
+            if (!bones.empty())
+                s_DepthShader->setMat4Array("u_BoneMatrices[0]", bones.data(), (int)bones.size());
+            s_DepthShader->use();
+            smr->GetMesh()->Draw();
+        }
     }
 
     ctx->RSSetState(DX11Context::GetRasterizerState());
@@ -48,10 +61,21 @@ void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
     for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
         auto obj = scene.GetGameObject(i);
         if (!obj || !obj->IsActive()) continue;
-        auto mr = obj->GetComponent<MeshRenderer>();
-        if (!mr || !mr->GetMesh()) continue;
-        s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
-        mr->GetMesh()->Draw();
+
+        if (auto mr = obj->GetComponent<MeshRenderer>()) {
+            if (!mr->GetMesh()) continue;
+            s_DepthShader->setBool("u_UseSkinning", false);
+            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+            mr->GetMesh()->Draw();
+        } else if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
+            if (!smr->GetMesh()) continue;
+            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+            s_DepthShader->setBool("u_UseSkinning", true);
+            const auto& bones = smr->GetBoneMatrices();
+            if (!bones.empty())
+                s_DepthShader->setMat4Array("u_BoneMatrices[0]", bones.data(), (int)bones.size());
+            smr->GetMesh()->Draw();
+        }
     }
 
     glCullFace(GL_BACK);

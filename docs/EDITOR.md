@@ -28,16 +28,16 @@ Constants: `HIERARCHY_W=200`, `INSPECTOR_W=280`, `MENUBAR_H=20`
 | `EditorLayer.cpp` | Init, Shutdown, BeginFrame/EndFrame, Render dispatch |
 | `EditorMenuBar.cpp` | DrawMenuBar, ToggleFullscreen |
 | `EditorHierarchy.cpp` | DrawHierarchy |
-| `EditorInspector.cpp` | DrawInspector |
+| `EditorInspector.cpp` | DrawInspector (all component panels) |
 | `EditorGizmo.cpp` | DrawGizmo (ImGuizmo) |
-| `EditorDialogs.cpp` | DrawImportDialog, DrawTexturePickerDialog |
+| `EditorDialogs.cpp` | DrawImportDialog, DrawTexturePickerDialog, DrawScriptPickerDialog, DrawAddClipDialog, DrawAudioPickerDialog |
 
 ---
 
 ## Menu Bar
 
 - **Scene > Save** — บันทึก MainScene.json (หรือกด F5)
-- **Scene > Import Model** — เปิด import dialog (.obj / .gltf / .glb)
+- **Scene > Import Model** — เปิด import dialog (`.obj` / `.gltf` / `.glb` / `.fbx`)
 - **View > Fullscreen** — toggle fullscreen (หรือกด F11)
 - **Play / Stop** — toggle play mode
 - **Exposure** slider (ทุก backend)
@@ -62,6 +62,7 @@ Constants: `HIERARCHY_W=200`, `INSPECTOR_W=280`, `MENUBAR_H=20`
 
 ### Transform
 - Position, Rotation (Euler), Scale sliders
+- Disabled ใน play mode
 
 ### MeshRenderer
 - Mesh path (readonly)
@@ -71,9 +72,24 @@ Constants: `HIERARCHY_W=200`, `INSPECTOR_W=280`, `MENUBAR_H=20`
 - Roughness, Metallic sliders
 - World UV toggle + tile slider
 
+### SkinnedMeshRenderer
+- Mesh path (readonly)
+- Animation clips list (ชื่อ + ปุ่ม Play ต่อ clip)
+- **Add Clips From File** button → เปิด Add Clip dialog (รองรับ `.fbx`, `.gltf`, `.glb`)
+- Current clip index / total clips
+
 ### Rigidbody
+- **Preset** dropdown — Default / Metal / Wood / Rubber / Ice / Glass / Water / Stone (โหลด PhysicsMaterial presets ทันที)
 - Body Type (Static / Dynamic)
-- Mass, Friction, Restitution sliders
+- Mass slider
+- **Material** section:
+  - Friction, Restitution sliders
+  - Density slider
+  - Hardness slider
+  - **Optical** section (Glass / Water presets):
+    - IOR (Index of Refraction) slider
+    - Transparency slider
+    - Absorbance slider
 - Use Gravity checkbox
 
 ### Collider
@@ -88,13 +104,61 @@ Constants: `HIERARCHY_W=200`, `INSPECTOR_W=280`, `MENUBAR_H=20`
 - Direction XYZ (Directional)
 - Radius slider (Point)
 
+### LuaScript
+- Script path (readonly)
+- **Browse Script** button → เปิด script picker dialog
+- Hot-reload indicator
+
+### AudioSource
+- Clip path (readonly)
+- **Browse Audio** button → เปิด audio picker dialog
+- Volume, Pitch sliders
+- Loop, Play On Start checkboxes
+- Spatial (3D) checkbox
+- Min Distance, Max Distance sliders (แสดงเมื่อ Spatial = true)
+- ปุ่ม **Play / Pause / Stop** (ใช้ได้ขณะ play mode ทำงาน)
+
+### AudioListener
+- แสดงเป็น header เท่านั้น (ไม่มี field ปรับ)
+- ทำหน้าที่ sync ตำแหน่งหูจาก Transform ของ GameObject นี้
+
+### UILabel
+- Text input
+- Font Size slider
+- Color picker
+- Centered checkbox
+- Anchor dropdown (9 anchor points)
+- Offset XY
+
+### UIImage
+- Texture path + picker button
+- Size XY
+- Tint color picker
+- Anchor dropdown
+- Offset XY
+
+---
+
+## Add Component
+
+ปุ่ม **Add Component** ด้านล่าง Inspector รายการที่รองรับ:
+- MeshRenderer
+- Rigidbody
+- Collider
+- Light
+- LuaScript
+- AudioSource
+- AudioListener
+- UILabel
+- UIImage
+
 ---
 
 ## Transform Gizmos (ImGuizmo)
 
 keyboard shortcuts:
 - **T** — Translate
-- **R** — Rotate  
+- **R** — Rotate
 - **G** — Scale (forced LOCAL space)
 
 Space toggle: Local / World (Scale ล็อค Local เสมอ เป็น ImGuizmo limitation)
@@ -105,11 +169,12 @@ Matrix decompose: position from `mat[3]`, scale from column lengths, rotation vi
 
 ## Import Dialog
 
-File browser กรอง `.obj`, `.gltf`, `.glb`
+File browser กรอง `.obj`, `.gltf`, `.glb`, `.fbx`
 
 เมื่อ import:
-- OBJ → `OBJLoader::Load` → สร้าง 1 GameObject
-- GLTF/GLB → `GLTFLoader::Import` → สร้างหลาย GameObject ตาม node hierarchy
+- **OBJ** → `OBJLoader::Load` → สร้าง 1 GameObject
+- **GLTF/GLB** → `GLTFLoader::Import` → สร้างหลาย GameObject ตาม node hierarchy
+- **FBX** → `FBXLoader::Import` → สร้าง GameObject (static หรือ skinned)
 
 ---
 
@@ -121,11 +186,36 @@ File browser กรอง `.png`, `.jpg`
 
 ---
 
+## Script Picker Dialog
+
+File browser กรอง `.lua`
+
+ผล: set `LuaScript::scriptPath` + hot-reload script ทันที
+
+---
+
+## Add Clip Dialog
+
+File browser กรอง `.fbx`, `.gltf`, `.glb`
+
+ผล: เรียก `SkinnedMeshRenderer::AddClipsFromFile(path, skeleton, clips)` — append animation clips ด้วย joint remapping by name
+
+---
+
+## Audio Picker Dialog
+
+File browser กรอง `.wav`, `.mp3`, `.ogg`, `.flac`
+
+ผล: set `AudioSource::clipPath` — sound จะโหลดใหม่เมื่อเล่นครั้งถัดไป
+
+---
+
 ## Play Mode Restrictions
 
 - Hierarchy: delete disabled
 - Inspector: Transform edit disabled
 - ปุ่ม Play เปลี่ยนเป็น Stop
+- AudioSource: ปุ่ม Play/Pause/Stop ใช้ได้ใน play mode
 
 ---
 
