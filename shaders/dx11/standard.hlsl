@@ -153,7 +153,7 @@ float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir)
     if (proj.z < 0.0 || proj.z > 1.0) return 0.0;
 
     float bias  = max(0.001 * (1.0 - dot(normal, lightDir)), 0.0001);
-    float spread = 2.5;
+    float spread = 4.0;
 
     uint w, h;
     t_ShadowMap.GetDimensions(w, h);

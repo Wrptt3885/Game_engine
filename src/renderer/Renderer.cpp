@@ -80,7 +80,7 @@ void Renderer::Init() {
     RHI::Init(GraphicsAPI::DirectX11);
     s_Shader      = Shader::Create(SHADER_DIR "/dx11/standard.hlsl", SHADER_DIR "/dx11/standard.hlsl");
     s_DepthShader = Shader::Create(SHADER_DIR "/dx11/depth.hlsl",    SHADER_DIR "/dx11/depth.hlsl");
-    s_DX11Shadow    = new DX11ShadowMap(2048, 2048);
+    s_DX11Shadow    = new DX11ShadowMap(4096, 4096);
     s_DX11Sky       = new DX11Skybox();
     s_TonemapShader = Shader::Create(SHADER_DIR "/dx11/tonemap.hlsl", SHADER_DIR "/dx11/tonemap.hlsl");
 

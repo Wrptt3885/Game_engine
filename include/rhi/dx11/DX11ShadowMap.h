@@ -5,7 +5,7 @@
 
 class DX11ShadowMap {
 public:
-    DX11ShadowMap(int width = 2048, int height = 2048);
+    DX11ShadowMap(int width = 4096, int height = 4096);
     ~DX11ShadowMap();
 
     void Bind()   const;
