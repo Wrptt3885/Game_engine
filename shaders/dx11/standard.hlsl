@@ -64,8 +64,8 @@ Texture2D    t_NormalMap    : register(t1);
 Texture2D    t_ShadowMap    : register(t2);
 Texture2D    t_SSAO         : register(t3);
 TextureCube  t_PointShadow  : register(t4);
-SamplerState s_Linear       : register(s0);
-SamplerState s_Shadow       : register(s1);
+SamplerState           s_Linear  : register(s0);
+SamplerComparisonState s_Shadow  : register(s1);
 
 // ---- VS ---------------------------------------------------------------------
 
@@ -162,8 +162,7 @@ float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir)
     float shadow = 0.0;
     [unroll]
     for (int i = 0; i < 16; i++) {
-        float depth = t_ShadowMap.Sample(s_Shadow, proj.xy + poissonDisk[i] * texel).r;
-        shadow += (proj.z - bias) > depth ? 1.0 : 0.0;
+        shadow += t_ShadowMap.SampleCmpLevelZero(s_Shadow, proj.xy + poissonDisk[i] * texel, proj.z - bias);
     }
     return shadow / 16.0;
 }
@@ -175,7 +174,7 @@ float PointShadowFactor(float3 fragPos)
     if (!u_HasPointShadow) return 0.0;
     float3 L    = fragPos - u_PointShadowPos;
     float  dist = length(L) / u_PointShadowFar;
-    float  closestDist = t_PointShadow.Sample(s_Shadow, L).r;
+    float  closestDist = t_PointShadow.Sample(s_Linear, L).r;
     float  bias = 0.005;
     return (dist - bias > closestDist) ? 1.0 : 0.0;
 }
@@ -290,8 +289,9 @@ float4 PS(VSOut input) : SV_TARGET
 
     float3 kS = FresnelRoughness(max(dot(N, V), 0.0), F0, roughness);
     float3 kD = (1.0 - kS) * (1.0 - metallic);
+    float shadowedAmbient = 1.0 - shadow * 0.4;
     float3 ambient = (kD * envColor * albedo
-                   + kS * envColor * (1.0 - roughness * roughness) * 0.5) * ao;
+                   + kS * envColor * (1.0 - roughness * roughness) * 0.5) * ao * shadowedAmbient;
 
     return float4(ambient + Lo, 1.0);
 }

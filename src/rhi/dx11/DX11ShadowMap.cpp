@@ -32,9 +32,8 @@ DX11ShadowMap::DX11ShadowMap(int width, int height)
     srvDesc.Texture2D.MipLevels             = 1;
     dev->CreateShaderResourceView(m_Texture, &srvDesc, &m_SRV);
 
-    // Point sampler for manual PCF — HLSL uses .Sample(), not .SampleCmp()
     D3D11_SAMPLER_DESC smpd   = {};
-    smpd.Filter               = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    smpd.Filter               = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
     smpd.AddressU             = D3D11_TEXTURE_ADDRESS_BORDER;
     smpd.AddressV             = D3D11_TEXTURE_ADDRESS_BORDER;
     smpd.AddressW             = D3D11_TEXTURE_ADDRESS_BORDER;
@@ -42,7 +41,7 @@ DX11ShadowMap::DX11ShadowMap(int width, int height)
     smpd.BorderColor[1]       = 1.0f;
     smpd.BorderColor[2]       = 1.0f;
     smpd.BorderColor[3]       = 1.0f;
-    smpd.ComparisonFunc       = D3D11_COMPARISON_NEVER;
+    smpd.ComparisonFunc       = D3D11_COMPARISON_LESS_EQUAL;
     smpd.MaxLOD               = D3D11_FLOAT32_MAX;
     dev->CreateSamplerState(&smpd, &m_Sampler);
 }
