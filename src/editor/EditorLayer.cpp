@@ -1,4 +1,5 @@
 #include "editor/EditorLayer.h"
+#include "editor/UndoManager.h"
 #include "core/Scene.h"
 #include "core/Camera.h"
 #include "core/SceneSerializer.h"
@@ -146,7 +147,18 @@ void EditorLayer::Render(Scene& scene, Camera& camera, const std::string& sceneP
         }
     }
 
+    // Undo / Redo shortcuts (only when not typing in a text field, not playing)
+    if (!isPlaying && !io.WantTextInput) {
+        bool ctrl = io.KeyCtrl;
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) UndoManager::Undo();
+        if (ctrl && (ImGui::IsKeyPressed(ImGuiKey_Y, false) ||
+                     (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))))
+            UndoManager::Redo();
+    }
+
     DrawMenuBar(scene, scenePath, isPlaying);
+
+    DrawSceneViewport();
 
     if (m_ShowHierarchy) {
         ImGui::SetNextWindowPos ({0, MENUBAR_H}, ImGuiCond_Always);
@@ -165,6 +177,8 @@ void EditorLayer::Render(Scene& scene, Camera& camera, const std::string& sceneP
         DrawInspector(isPlaying);
         ImGui::End();
     }
+
+    DrawAssetBrowser(isPlaying);
 
     DrawImportDialog();
     DrawTexturePickerDialog();

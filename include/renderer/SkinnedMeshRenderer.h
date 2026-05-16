@@ -67,6 +67,8 @@ private:
     std::shared_ptr<Skeleton>  m_Skeleton;
     std::vector<AnimationClip> m_Clips;
     std::vector<glm::mat4>     m_BoneMatrices;
+    std::vector<glm::mat4>     m_PoseScratch;   // reused per EvaluatePose
+    std::vector<const struct JointTrack*> m_TrackByJoint; // reused per EvaluatePose
 
     int   m_CurrentClip    = 0;
     float m_Time           = 0.0f;

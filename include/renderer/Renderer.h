@@ -18,8 +18,11 @@ public:
     static void Init();
     static void Shutdown();
     static void Clear();
+    static void ReloadShaders();  // dev-only: re-create all shaders from disk (F6)
 
-    static void ShadowPass(Scene& scene, const glm::vec3& lightDir);
+    // Picks the first active directional light in the scene and fits the
+    // ortho box to the camera frustum. No-op if there is no directional light.
+    static void ShadowPass(Scene& scene, const Camera& camera);
 
     // SSAO pre-pass (DX11 only — no-op on OpenGL path)
     static void GBufferPass(Scene& scene, Camera& cam, int w, int h);
@@ -46,6 +49,19 @@ public:
     static void  SetExposure(float e) { s_Exposure = e; }
     static float GetExposure()        { return s_Exposure; }
 
+    // Render-to-texture viewport (scene-in-ImGui-window mode).
+    // ResizeViewport (re)allocates the offscreen color target.
+    // ApplyTonemapToViewport runs the tonemap pass writing to that target
+    // instead of the backbuffer. GetViewportTextureID returns an
+    // ImGui-compatible handle (ID3D11ShaderResourceView* for DX11,
+    // (void*)(uintptr_t)glTex for OpenGL).
+    static void  ResizeViewport(int w, int h);
+    static void  ApplyTonemapToViewport();
+    static void* GetViewportTextureID();
+    static int   GetViewportWidth();
+    static int   GetViewportHeight();
+    static void  ClearBackbuffer(int w, int h);
+
     // Bloom (DX11 only — no-op on OpenGL path)
     static void  BloomPass(int w, int h);
     static void  SetBloomThreshold(float t) { s_BloomThreshold = t; }
@@ -54,18 +70,9 @@ public:
     static float GetBloomIntensity()        { return s_BloomIntensity; }
 
 private:
-    static std::shared_ptr<Shader> s_Shader;
-    static std::shared_ptr<Shader> s_DepthShader;
-    static std::shared_ptr<Shader> s_TonemapShader;
-    static std::shared_ptr<Shader> s_BloomThresholdShader;
-    static std::shared_ptr<Shader> s_BloomBlurShader;
-    static std::shared_ptr<Shader> s_PointDepthShader;
-    static glm::mat4               s_LightSpaceMatrix;
+    // Only public-configurable knobs live in the class. Pipeline state and
+    // backend resources are file-scope in RendererState.h.
     static float                   s_Exposure;
     static float                   s_BloomThreshold;
     static float                   s_BloomIntensity;
-    static glm::vec3               s_PointShadowLightPos;
-    static float                   s_PointShadowFarPlane;
-    static bool                    s_HasPointShadow;
-    static int                     s_HDR_W, s_HDR_H;
 };

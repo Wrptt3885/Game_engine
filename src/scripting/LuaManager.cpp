@@ -19,6 +19,10 @@ static Scene* s_Scene     = nullptr;
 static bool   s_Playing   = false;
 static float  s_TotalTime = 0.0f;
 
+static std::function<void(const std::string&)> s_LoadSceneCb;
+static std::function<void(const std::string&)> s_PushSceneCb;
+static std::function<void()>                    s_PopSceneCb;
+
 static const std::unordered_map<std::string, int>& KeyMap() {
     static const std::unordered_map<std::string, int> km = {
         {"A",GLFW_KEY_A},{"B",GLFW_KEY_B},{"C",GLFW_KEY_C},{"D",GLFW_KEY_D},
@@ -99,6 +103,19 @@ void LuaManager::Init() {
     });
     s_Lua["Scene"] = scene_tbl;
 
+    // Application — scene transitions
+    sol::table app = s_Lua.create_table();
+    app.set_function("LoadScene", [](const std::string& path) {
+        if (s_LoadSceneCb) s_LoadSceneCb(path);
+    });
+    app.set_function("PushScene", [](const std::string& path) {
+        if (s_PushSceneCb) s_PushSceneCb(path);
+    });
+    app.set_function("PopScene", []() {
+        if (s_PopSceneCb) s_PopSceneCb();
+    });
+    s_Lua["Application"] = app;
+
     // math.lerp, math.clamp extensions
     sol::table m = s_Lua["math"];
     m.set_function("lerp",  [](float a, float b, float t) { return a + (b - a) * t; });
@@ -133,3 +150,7 @@ void LuaManager::SetPlayMode(bool playing) {
 }
 
 bool LuaManager::IsPlaying() { return s_Playing; }
+
+void LuaManager::SetLoadSceneCallback(std::function<void(const std::string&)> cb) { s_LoadSceneCb = std::move(cb); }
+void LuaManager::SetPushSceneCallback(std::function<void(const std::string&)> cb) { s_PushSceneCb = std::move(cb); }
+void LuaManager::SetPopSceneCallback(std::function<void()> cb)                    { s_PopSceneCb  = std::move(cb); }

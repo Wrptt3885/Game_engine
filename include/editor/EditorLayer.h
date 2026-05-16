@@ -30,6 +30,13 @@ public:
     bool WantsCaptureKeyboard() const;
     void ToggleFullscreen();
 
+    // Scene viewport (render-to-texture mode)
+    bool IsSceneViewportEnabled() const { return m_ShowSceneViewport; }
+    bool IsSceneViewportHovered() const { return m_ShowSceneViewport && m_ViewportHovered; }
+    bool WantsCaptureMouseForCamera() const;  // false when hovering scene viewport
+    int  GetSceneViewportWidth()  const { return m_ViewportW; }
+    int  GetSceneViewportHeight() const { return m_ViewportH; }
+
     // Polled each frame by Application::Update
     bool ConsumePlayRequest()  { bool v = m_PlayRequested;  m_PlayRequested  = false; return v; }
     bool ConsumeStopRequest()  { bool v = m_StopRequested;  m_StopRequested  = false; return v; }
@@ -37,14 +44,17 @@ public:
                                m_ClipTarget = nullptr; m_ShowAddClipDlg = false; }
 
     // Layout constants shared across panel files
-    static constexpr float HIERARCHY_W = 200.0f;
-    static constexpr float INSPECTOR_W = 280.0f;
-    static constexpr float MENUBAR_H   = 20.0f;
+    static constexpr float HIERARCHY_W   = 200.0f;
+    static constexpr float INSPECTOR_W   = 280.0f;
+    static constexpr float MENUBAR_H     = 20.0f;
+    static constexpr float ASSETBROWSER_H = 200.0f;
 
 private:
     void DrawMenuBar(Scene& scene, const std::string& scenePath, bool isPlaying);
     void DrawHierarchy(Scene& scene);
     void DrawInspector(bool isPlaying);
+    void DrawAssetBrowser(bool isPlaying);
+    void DrawSceneViewport();
     void DrawImportDialog();
     void DrawTexturePickerDialog();
     void DrawScriptPickerDialog();
@@ -71,8 +81,22 @@ private:
     std::string m_SelectedOBJ;
 
     // panel visibility
-    bool        m_ShowHierarchy  = true;
-    bool        m_ShowInspector  = true;
+    bool        m_ShowHierarchy     = true;
+    bool        m_ShowInspector     = true;
+    bool        m_ShowAssetBrowser  = true;
+    bool        m_ShowSceneViewport = false;
+
+    // scene viewport state (only meaningful when m_ShowSceneViewport)
+    int         m_ViewportW       = 0;
+    int         m_ViewportH       = 0;
+    float       m_ViewportPosX    = 0.0f;
+    float       m_ViewportPosY    = 0.0f;
+    bool        m_ViewportHovered = false;
+
+    // asset browser
+    std::string m_AssetBrowsePath;
+    int         m_AssetFilter      = 0;       // 0=All, 1=Models, 2=Textures, 3=Scripts, 4=Audio, 5=Scenes
+    std::string m_AssetSelected;
 
     // play mode signals
     bool        m_PlayRequested  = false;

@@ -31,6 +31,13 @@ void Scene::DestroyGameObject(std::shared_ptr<GameObject> obj) {
     m_GameObjects.erase(it);
 }
 
+void Scene::AddGameObject(std::shared_ptr<GameObject> obj) {
+    if (!obj) return;
+    auto it = std::find(m_GameObjects.begin(), m_GameObjects.end(), obj);
+    if (it != m_GameObjects.end()) return;
+    m_GameObjects.push_back(std::move(obj));
+}
+
 void Scene::Update(float deltaTime) {
     for (auto& obj : m_GameObjects) {
         if (obj && obj->IsActive())

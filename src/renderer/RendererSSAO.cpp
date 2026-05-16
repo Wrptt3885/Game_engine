@@ -47,17 +47,26 @@ void Renderer::GBufferPass(Scene& scene, Camera& cam, int w, int h) {
     if (w != s_GBuf_W || h != s_GBuf_H) CreateSSAOResources(w, h);
     if (!s_GBuf_PosRTV || !s_GBuf_NorRTV) return;
 
+    // Shared scene-sized depth target — backbuffer DSV would be the wrong
+    // size in scene-viewport mode.
+    EnsureSceneDepth(w, h);
+
     auto* ctx = DX11Context::GetContext();
     GPU_MARKER(ctx, "G-Buffer Pass");
 
     float zeros[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     ctx->ClearRenderTargetView(s_GBuf_PosRTV, zeros);
     ctx->ClearRenderTargetView(s_GBuf_NorRTV, zeros);
-    ctx->ClearDepthStencilView(DX11Context::GetDSV(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+    ctx->ClearDepthStencilView(s_Scene_DSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     ID3D11RenderTargetView* rtvs[] = { s_GBuf_PosRTV, s_GBuf_NorRTV };
-    ctx->OMSetRenderTargets(2, rtvs, DX11Context::GetDSV());
-    const auto& vp = DX11Context::GetViewport();
+    ctx->OMSetRenderTargets(2, rtvs, s_Scene_DSV);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width    = (float)w;
+    vp.Height   = (float)h;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
     ctx->RSSetViewports(1, &vp);
     ctx->RSSetState(DX11Context::GetRasterizerState());
 
@@ -91,9 +100,19 @@ void Renderer::SSAOPass(Camera& cam, int w, int h) {
     ctx->OMSetRenderTargets(1, &s_SSAO_RTV, nullptr);
     ctx->RSSetState(nullptr);
 
+    static const char* kKernelNames[32] = {
+        "u_Kernel[0]", "u_Kernel[1]", "u_Kernel[2]", "u_Kernel[3]",
+        "u_Kernel[4]", "u_Kernel[5]", "u_Kernel[6]", "u_Kernel[7]",
+        "u_Kernel[8]", "u_Kernel[9]", "u_Kernel[10]","u_Kernel[11]",
+        "u_Kernel[12]","u_Kernel[13]","u_Kernel[14]","u_Kernel[15]",
+        "u_Kernel[16]","u_Kernel[17]","u_Kernel[18]","u_Kernel[19]",
+        "u_Kernel[20]","u_Kernel[21]","u_Kernel[22]","u_Kernel[23]",
+        "u_Kernel[24]","u_Kernel[25]","u_Kernel[26]","u_Kernel[27]",
+        "u_Kernel[28]","u_Kernel[29]","u_Kernel[30]","u_Kernel[31]",
+    };
     s_SSAOShader->setMat4("u_Projection", cam.GetProjectionMatrix());
     for (int k = 0; k < 32; k++)
-        s_SSAOShader->setVec3("u_Kernel[" + std::to_string(k) + "]", s_SSAOKernel[k]);
+        s_SSAOShader->setVec3(kKernelNames[k], s_SSAOKernel[k]);
     s_SSAOShader->setFloat("u_NoiseScaleX", (float)w / 4.0f);
     s_SSAOShader->setFloat("u_NoiseScaleY", (float)h / 4.0f);
     s_SSAOShader->setFloat("u_Radius",      0.5f);

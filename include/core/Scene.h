@@ -20,6 +20,10 @@ public:
     std::shared_ptr<GameObject> CreateGameObject(const std::string& name = "GameObject");
     void DestroyGameObject(std::shared_ptr<GameObject> obj);
 
+    // Re-insert a previously-removed GameObject (used by Undo/Redo).
+    // Does not fire the destroy callback. No-op if already present.
+    void AddGameObject(std::shared_ptr<GameObject> obj);
+
     void SetDestroyCallback(std::function<void(GameObject*)> cb) { m_OnDestroy = std::move(cb); }
     void ClearDestroyCallback() { m_OnDestroy = nullptr; }
 

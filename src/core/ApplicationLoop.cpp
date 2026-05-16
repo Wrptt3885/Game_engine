@@ -33,6 +33,8 @@ void Application::ProcessInput(float deltaTime) {
     }
     if (Input::IsKeyDown(GLFW_KEY_F5) && m_CurrentScene)
         SceneSerializer::Save(*m_CurrentScene, SCENE_PATH);
+    if (Input::IsKeyDown(GLFW_KEY_F6))
+        Renderer::ReloadShaders();
     if (Input::IsKeyDown(GLFW_KEY_F11))
         m_Editor.ToggleFullscreen();
 
@@ -43,7 +45,7 @@ void Application::ProcessInput(float deltaTime) {
     }
 
     bool rmb = Input::IsMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT)
-               && !m_Editor.WantsCaptureMouse();
+               && !m_Editor.WantsCaptureMouseForCamera();
     glm::vec2 mousePos = Input::GetMousePosition();
     if (rmb) {
         if (!m_RMBWasPressed) {
@@ -102,6 +104,22 @@ void Application::ProcessInput(float deltaTime) {
 // ---- Update -----------------------------------------------------------------
 
 void Application::Update(float deltaTime) {
+    // Process deferred scene transitions (safe point — outside Lua/physics/render)
+    if (m_PendingPop && !m_SceneStack.empty()) {
+        std::string prev = m_SceneStack.back();
+        m_SceneStack.pop_back();
+        m_PendingPop  = false;
+        m_PendingLoad = false;
+        DoSceneTransition(prev);
+        return;
+    }
+    if (m_PendingLoad) {
+        std::string path = m_PendingPath;
+        m_PendingLoad = false;
+        DoSceneTransition(path);
+        return;
+    }
+
     if (!m_IsPlaying && m_Floor) {
         glm::vec3 cam = m_Camera->GetPosition();
         m_Floor->GetTransform().position.x = cam.x;
@@ -171,38 +189,57 @@ void Application::Update(float deltaTime) {
 // ---- Render -----------------------------------------------------------------
 
 void Application::Render() {
-    if (m_CurrentScene && m_Sun)
-        Renderer::ShadowPass(*m_CurrentScene, m_Sun->direction);
+    int winW, winH;
+    glfwGetFramebufferSize(m_Window, &winW, &winH);
+    if (winW <= 0 || winH <= 0) return;
+
+    // When the scene viewport panel is active, the scene is rendered into
+    // an offscreen texture sized to the panel; otherwise it covers the
+    // whole window backbuffer.
+    bool useViewport = m_Editor.IsSceneViewportEnabled()
+                       && m_Editor.GetSceneViewportWidth()  > 0
+                       && m_Editor.GetSceneViewportHeight() > 0;
+    int sceneW = useViewport ? m_Editor.GetSceneViewportWidth()  : winW;
+    int sceneH = useViewport ? m_Editor.GetSceneViewportHeight() : winH;
+
+    if (useViewport) Renderer::ResizeViewport(sceneW, sceneH);
+
+    m_Camera->SetPerspective(45.0f, (float)sceneW / (float)sceneH,
+                             0.1f, std::max(500.0f, m_Camera->GetDistance() * 5.0f));
+
+    // Shadow passes need an up-to-date camera projection so the ortho box
+    // can fit the frustum.
+    if (m_CurrentScene)
+        Renderer::ShadowPass(*m_CurrentScene, *m_Camera);
 #ifdef USE_DX11_BACKEND
     if (m_CurrentScene)
         Renderer::PointShadowPass(*m_CurrentScene);
 #endif
 
-    int w, h;
-    glfwGetFramebufferSize(m_Window, &w, &h);
-    if (w <= 0 || h <= 0) return;
-
-    m_Camera->SetPerspective(45.0f, (float)w / h,
-                             0.1f, std::max(500.0f, m_Camera->GetDistance() * 5.0f));
-
 #ifdef USE_DX11_BACKEND
-    if (m_CurrentScene) Renderer::GBufferPass(*m_CurrentScene, *m_Camera, w, h);
-    Renderer::SSAOPass(*m_Camera, w, h);
+    if (m_CurrentScene) Renderer::GBufferPass(*m_CurrentScene, *m_Camera, sceneW, sceneH);
+    Renderer::SSAOPass(*m_Camera, sceneW, sceneH);
     Renderer::SSAOBlurPass();
 #endif
 
-    Renderer::BeginHDRPass(w, h);
+    Renderer::BeginHDRPass(sceneW, sceneH);
     Renderer::Clear();
     Renderer::DrawSkybox(*m_Camera, m_Sun ? m_Sun->direction : glm::vec3(0.0f, -1.0f, 0.0f));
     if (m_CurrentScene) m_CurrentScene->Render(*m_Camera);
     Renderer::EndHDRPass();
 #ifdef USE_DX11_BACKEND
-    Renderer::BloomPass(w, h);
+    Renderer::BloomPass(sceneW, sceneH);
 #endif
-    Renderer::ApplyTonemap();
+
+    if (useViewport) {
+        Renderer::ApplyTonemapToViewport();
+        Renderer::ClearBackbuffer(winW, winH);
+    } else {
+        Renderer::ApplyTonemap();
+    }
 
     m_Editor.BeginFrame();
-    UICanvas::BeginFrame((float)w, (float)h);
+    UICanvas::BeginFrame((float)winW, (float)winH);
     if (m_CurrentScene) {
         m_CurrentScene->OnGUI();
         m_CurrentScene->GetUILayer().Render();

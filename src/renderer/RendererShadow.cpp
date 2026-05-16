@@ -1,18 +1,89 @@
 #include "RendererState.h"
 #include "core/Scene.h"
 #include "core/GameObject.h"
+#include "core/Camera.h"
 #include "renderer/MeshRenderer.h"
 #include "renderer/SkinnedMeshRenderer.h"
 #include "renderer/Light.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <algorithm>
 
-void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
+namespace {
+// Pull every active GameObject with a mesh (static or skinned) from the scene,
+// in a single place so passes (shadow / point-shadow / future culling) share
+// one iteration shape instead of each open-coding the dispatch.
+struct RenderItem {
+    glm::mat4                              model;
+    Mesh*                                  mesh;
+    const std::vector<glm::mat4>*          bones;  // null = static mesh
+};
+
+template <typename Fn>
+void ForEachRenderable(Scene& scene, Fn&& fn) {
+    for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
+        auto obj = scene.GetGameObject(i);
+        if (!obj || !obj->IsActive()) continue;
+
+        if (auto mr = obj->GetComponent<MeshRenderer>()) {
+            if (!mr->GetMesh()) continue;
+            RenderItem it{obj->GetTransform().GetMatrix(), mr->GetMesh().get(), nullptr};
+            fn(it);
+        } else if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
+            if (!smr->GetMesh()) continue;
+            RenderItem it{obj->GetTransform().GetMatrix(), smr->GetMesh().get(), &smr->GetBoneMatrices()};
+            fn(it);
+        }
+    }
+}
+} // namespace
+
+namespace {
+// First active directional light in the scene, or nullptr if none.
+Light* FindShadowCaster(Scene& scene) {
+    for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
+        auto obj = scene.GetGameObject(i);
+        if (!obj || !obj->IsActive()) continue;
+        auto light = obj->GetComponent<Light>();
+        if (light && light->type == LightType::Directional)
+            return light.get();
+    }
+    return nullptr;
+}
+
+// Build a light-space view+ortho centered on the camera. Uses a sphere of
+// fixed world-space radius (rotation-invariant in light space) so the shadow
+// texel density stays constant regardless of camera angle / scene size.
+// A full camera-frustum fit would let the far plane (default 500) blow the
+// ortho box up so badly that the 4096^2 shadow map gives ~8 texels/unit,
+// making the 16-sample PCF blur the shadow away entirely.
+glm::mat4 BuildLightSpaceMatrix(const Camera& cam, const glm::vec3& lightDir) {
+    const float kShadowRadius = 30.0f;   // half-extent of shadow coverage (world units)
+    const float kForwardBias  = 0.4f;    // push shadow region ahead of camera
+
+    glm::vec3 center = cam.GetPosition() + cam.GetLookForward() * (kShadowRadius * kForwardBias);
+
+    glm::vec3 L  = glm::normalize(lightDir);
+    glm::vec3 up = (std::abs(L.y) > 0.99f) ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+    glm::mat4 lightView = glm::lookAt(center - L * 100.0f, center, up);
+
+    // Tight near/far around the caster sphere (centered at depth 100 from
+    // light cam, radius kShadowRadius) keeps the depth-bias-in-world small —
+    // a wide near/far span turns bias×range into very visible peter-panning.
+    float r = kShadowRadius;
+    float zNear = 100.0f - kShadowRadius - 20.0f;  // some padding for tall casters
+    float zFar  = 100.0f + kShadowRadius + 20.0f;
+    return glm::ortho(-r, r, -r, r, zNear, zFar) * lightView;
+}
+} // namespace
+
+void Renderer::ShadowPass(Scene& scene, const Camera& camera) {
     if (!s_DepthShader) return;
 
-    glm::mat4 lightProj = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 1.0f, 150.0f);
-    glm::mat4 lightView = glm::lookAt(-glm::normalize(lightDir) * 80.0f,
-                                       glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    s_LightSpaceMatrix  = lightProj * lightView;
+    Light* caster = FindShadowCaster(scene);
+    if (!caster) return;  // no directional light → no shadow this frame
+
+    s_LightSpaceMatrix = BuildLightSpaceMatrix(camera, caster->direction);
 
 #ifdef USE_DX11_BACKEND
     if (!s_DX11Shadow) return;
@@ -25,27 +96,17 @@ void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
     s_DepthShader->setMat4("u_LightSpaceMatrix", s_LightSpaceMatrix);
     ctx->RSSetState(s_ShadowRS);
 
-    for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
-        auto obj = scene.GetGameObject(i);
-        if (!obj || !obj->IsActive()) continue;
-
-        if (auto mr = obj->GetComponent<MeshRenderer>()) {
-            if (!mr->GetMesh()) continue;
-            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
-            s_DepthShader->setBool("u_UseSkinning", false);
-            s_DepthShader->use();
-            mr->GetMesh()->Draw();
-        } else if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
-            if (!smr->GetMesh()) continue;
-            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+    ForEachRenderable(scene, [](const RenderItem& it) {
+        s_DepthShader->setMat4("u_Model", it.model);
+        if (it.bones && !it.bones->empty()) {
             s_DepthShader->setBool("u_UseSkinning", true);
-            const auto& bones = smr->GetBoneMatrices();
-            if (!bones.empty())
-                s_DepthShader->setMat4Array("u_BoneMatrices[0]", bones.data(), (int)bones.size());
-            s_DepthShader->use();
-            smr->GetMesh()->Draw();
+            s_DepthShader->setMat4Array("u_BoneMatrices[0]", it.bones->data(), (int)it.bones->size());
+        } else {
+            s_DepthShader->setBool("u_UseSkinning", false);
         }
-    }
+        s_DepthShader->use();
+        it.mesh->Draw();
+    });
 
     ctx->RSSetState(DX11Context::GetRasterizerState());
     s_DX11Shadow->Unbind();
@@ -58,25 +119,16 @@ void Renderer::ShadowPass(Scene& scene, const glm::vec3& lightDir) {
     s_DepthShader->use();
     s_DepthShader->setMat4("u_LightSpaceMatrix", s_LightSpaceMatrix);
 
-    for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
-        auto obj = scene.GetGameObject(i);
-        if (!obj || !obj->IsActive()) continue;
-
-        if (auto mr = obj->GetComponent<MeshRenderer>()) {
-            if (!mr->GetMesh()) continue;
-            s_DepthShader->setBool("u_UseSkinning", false);
-            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
-            mr->GetMesh()->Draw();
-        } else if (auto smr = obj->GetComponent<SkinnedMeshRenderer>()) {
-            if (!smr->GetMesh()) continue;
-            s_DepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+    ForEachRenderable(scene, [](const RenderItem& it) {
+        s_DepthShader->setMat4("u_Model", it.model);
+        if (it.bones && !it.bones->empty()) {
             s_DepthShader->setBool("u_UseSkinning", true);
-            const auto& bones = smr->GetBoneMatrices();
-            if (!bones.empty())
-                s_DepthShader->setMat4Array("u_BoneMatrices[0]", bones.data(), (int)bones.size());
-            smr->GetMesh()->Draw();
+            s_DepthShader->setMat4Array("u_BoneMatrices[0]", it.bones->data(), (int)it.bones->size());
+        } else {
+            s_DepthShader->setBool("u_UseSkinning", false);
         }
-    }
+        it.mesh->Draw();
+    });
 
     glCullFace(GL_BACK);
     glDisable(GL_CULL_FACE);
@@ -135,15 +187,17 @@ void Renderer::PointShadowPass(Scene& scene) {
         s_DX11PointShadow->BindFace(face);
         s_PointDepthShader->setMat4("u_ViewProj", viewProj);
 
-        for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
-            auto obj = scene.GetGameObject(i);
-            if (!obj || !obj->IsActive()) continue;
-            auto mr = obj->GetComponent<MeshRenderer>();
-            if (!mr || !mr->GetMesh()) continue;
-            s_PointDepthShader->setMat4("u_Model", obj->GetTransform().GetMatrix());
+        ForEachRenderable(scene, [](const RenderItem& it) {
+            s_PointDepthShader->setMat4("u_Model", it.model);
+            if (it.bones && !it.bones->empty()) {
+                s_PointDepthShader->setBool("u_UseSkinning", true);
+                s_PointDepthShader->setMat4Array("u_BoneMatrices[0]", it.bones->data(), (int)it.bones->size());
+            } else {
+                s_PointDepthShader->setBool("u_UseSkinning", false);
+            }
             s_PointDepthShader->use();
-            mr->GetMesh()->Draw();
-        }
+            it.mesh->Draw();
+        });
     }
 
     s_DX11PointShadow->Unbind();

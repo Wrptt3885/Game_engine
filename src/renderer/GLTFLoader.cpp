@@ -60,7 +60,9 @@ template<typename T>
 static std::vector<T> ReadAccessor(const tinygltf::Model& m, int accIdx) {
     if (accIdx < 0 || accIdx >= (int)m.accessors.size()) return {};
     const auto& acc = m.accessors[accIdx];
+    if (acc.bufferView < 0 || acc.bufferView >= (int)m.bufferViews.size()) return {};
     const auto& bv  = m.bufferViews[acc.bufferView];
+    if (bv.buffer < 0 || bv.buffer >= (int)m.buffers.size()) return {};
     const auto& buf = m.buffers[bv.buffer];
     const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
     int stride = (bv.byteStride > 0) ? (int)bv.byteStride : (int)sizeof(T);
@@ -73,7 +75,9 @@ static std::vector<T> ReadAccessor(const tinygltf::Model& m, int accIdx) {
 static std::vector<uint32_t> ReadIndices(const tinygltf::Model& m, int accIdx) {
     if (accIdx < 0 || accIdx >= (int)m.accessors.size()) return {};
     const auto& acc = m.accessors[accIdx];
+    if (acc.bufferView < 0 || acc.bufferView >= (int)m.bufferViews.size()) return {};
     const auto& bv  = m.bufferViews[acc.bufferView];
+    if (bv.buffer < 0 || bv.buffer >= (int)m.buffers.size()) return {};
     const auto& buf = m.buffers[bv.buffer];
     const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
     std::vector<uint32_t> out(acc.count);
@@ -93,7 +97,9 @@ static std::vector<uint32_t> ReadIndices(const tinygltf::Model& m, int accIdx) {
 static std::vector<glm::uvec4> ReadJoints(const tinygltf::Model& m, int accIdx) {
     if (accIdx < 0 || accIdx >= (int)m.accessors.size()) return {};
     const auto& acc = m.accessors[accIdx];
+    if (acc.bufferView < 0 || acc.bufferView >= (int)m.bufferViews.size()) return {};
     const auto& bv  = m.bufferViews[acc.bufferView];
+    if (bv.buffer < 0 || bv.buffer >= (int)m.buffers.size()) return {};
     const auto& buf = m.buffers[bv.buffer];
     const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
     std::vector<glm::uvec4> out(acc.count);
@@ -120,6 +126,7 @@ static std::vector<glm::uvec4> ReadJoints(const tinygltf::Model& m, int accIdx) 
 
 static void ComputeTangents(std::vector<Vertex>& verts, const std::vector<uint32_t>& idx) {
     for (size_t i = 0; i + 2 < idx.size(); i += 3) {
+        if (idx[i] >= verts.size() || idx[i+1] >= verts.size() || idx[i+2] >= verts.size()) continue;
         auto& v0 = verts[idx[i]]; auto& v1 = verts[idx[i+1]]; auto& v2 = verts[idx[i+2]];
         glm::vec3 e1 = v1.position - v0.position;
         glm::vec3 e2 = v2.position - v0.position;

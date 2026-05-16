@@ -5,6 +5,8 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <memory>
+#include <string>
+#include <vector>
 
 class Scene;
 class Camera;
@@ -26,7 +28,13 @@ public:
     void StartPlay();
     void StopPlay();
 
+    // Scene transitions — safe to call from Lua (deferred to next frame)
+    void LoadScene(const std::string& path);  // load fresh, clear stack
+    void PushScene(const std::string& path);  // push current, load new
+    void PopScene();                           // go back to previous
+
 private:
+    void DoSceneTransition(const std::string& path);
     void InitWindow();
     void InitRenderer();
     void InitInput();
@@ -53,6 +61,12 @@ private:
 
     bool        m_IsPlaying     = false;
     std::string m_SceneSnapshot;
+
+    std::string              m_CurrentScenePath;
+    std::vector<std::string> m_SceneStack;
+    bool                     m_PendingLoad = false;
+    std::string              m_PendingPath;
+    bool                     m_PendingPop  = false;
 
     glm::vec3   m_CharMoveDir    = glm::vec3(0.0f);
     bool        m_CharJump        = false;

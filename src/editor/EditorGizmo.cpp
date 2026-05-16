@@ -16,7 +16,13 @@ void EditorLayer::DrawGizmo(Camera& camera) {
     float viewX = HIERARCHY_W;
     float viewY = MENUBAR_H;
     float viewW = display.x - HIERARCHY_W - INSPECTOR_W;
-    float viewH = display.y - MENUBAR_H;
+    float viewH = display.y - MENUBAR_H - (m_ShowAssetBrowser ? ASSETBROWSER_H : 0.0f);
+    if (m_ShowSceneViewport && m_ViewportW > 0 && m_ViewportH > 0) {
+        viewX = m_ViewportPosX;
+        viewY = m_ViewportPosY;
+        viewW = (float)m_ViewportW;
+        viewH = (float)m_ViewportH;
+    }
 
     // Keyboard shortcuts (T/R/G) when not typing into a text field
     if (!io.WantTextInput) {

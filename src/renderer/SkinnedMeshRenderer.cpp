@@ -9,10 +9,26 @@
 #include <cmath>
 #include <unordered_map>
 
+// Truncate each track's value array to its matching times array (and vice versa)
+// so EvaluatePose can index safely without a per-sample bounds check.
+static void NormalizeTracks(std::vector<AnimationClip>& clips) {
+    for (auto& c : clips) {
+        for (auto& t : c.tracks) {
+            size_t nT = std::min(t.translationTimes.size(), t.translations.size());
+            t.translationTimes.resize(nT); t.translations.resize(nT);
+            size_t nR = std::min(t.rotationTimes.size(),    t.rotations.size());
+            t.rotationTimes.resize(nR);    t.rotations.resize(nR);
+            size_t nS = std::min(t.scaleTimes.size(),       t.scales.size());
+            t.scaleTimes.resize(nS);       t.scales.resize(nS);
+        }
+    }
+}
+
 void SkinnedMeshRenderer::AddClipsFromFile(const std::string& filepath,
                                             std::shared_ptr<Skeleton> srcSkel,
                                             std::vector<AnimationClip> clips)
 {
+    NormalizeTracks(clips);
     // Build source-joint-index → target-joint-index map using joint names.
     // If skeletons match exactly this is an identity map; handles mis-ordered exports.
     std::unordered_map<int, int> remap;
@@ -42,6 +58,7 @@ void SkinnedMeshRenderer::SetSkeleton(std::shared_ptr<Skeleton> skel) {
 }
 
 void SkinnedMeshRenderer::SetClips(std::vector<AnimationClip> clips) {
+    NormalizeTracks(clips);
     m_Clips       = std::move(clips);
     m_CurrentClip = 0;
     m_Time        = 0.0f;
@@ -139,39 +156,37 @@ void SkinnedMeshRenderer::EvaluatePose() {
     if (!m_Skeleton || m_Skeleton->joints.empty()) return;
 
     int n = (int)m_Skeleton->joints.size();
-    if ((int)m_BoneMatrices.size() != n)
-        m_BoneMatrices.assign(n, glm::mat4(1.0f));
+    if ((int)m_BoneMatrices.size() != n) m_BoneMatrices.assign(n, glm::mat4(1.0f));
+    if ((int)m_PoseScratch.size()  != n) m_PoseScratch.assign(n, glm::mat4(1.0f));
 
-    // Build a fast lookup from jointIndex -> track for the current clip
-    std::unordered_map<int, const JointTrack*> trackMap;
+    // Track-by-joint table reused across frames; sized to joint count.
+    m_TrackByJoint.assign(n, nullptr);
     if (m_CurrentClip >= 0 && m_CurrentClip < (int)m_Clips.size()) {
-        for (const auto& t : m_Clips[m_CurrentClip].tracks)
-            trackMap[t.jointIndex] = &t;
+        for (const auto& t : m_Clips[m_CurrentClip].tracks) {
+            if (t.jointIndex >= 0 && t.jointIndex < n)
+                m_TrackByJoint[t.jointIndex] = &t;
+        }
     }
 
     // Traverse joints in order (GLTF guarantees parents come before children)
-    std::vector<glm::mat4> global(n, glm::mat4(1.0f));
-
     for (int i = 0; i < n; i++) {
         const Joint& joint = m_Skeleton->joints[i];
 
         glm::mat4 local(1.0f);
-        auto it = trackMap.find(i);
-        if (it != trackMap.end()) {
-            const JointTrack& track = *it->second;
-            glm::vec3 pos   = SampleVec3(track.translationTimes, track.translations, m_Time, glm::vec3(0.0f));
-            glm::quat rot   = SampleQuat(track.rotationTimes,    track.rotations,    m_Time);
-            glm::vec3 scale = SampleVec3(track.scaleTimes,       track.scales,       m_Time, glm::vec3(1.0f));
+        if (const JointTrack* track = m_TrackByJoint[i]) {
+            glm::vec3 pos   = SampleVec3(track->translationTimes, track->translations, m_Time, glm::vec3(0.0f));
+            glm::quat rot   = SampleQuat(track->rotationTimes,    track->rotations,    m_Time);
+            glm::vec3 scale = SampleVec3(track->scaleTimes,       track->scales,       m_Time, glm::vec3(1.0f));
             local = glm::translate(glm::mat4(1.0f), pos)
                   * glm::mat4_cast(rot)
                   * glm::scale(glm::mat4(1.0f), scale);
         }
 
-        global[i] = (joint.parentIndex < 0)
+        m_PoseScratch[i] = (joint.parentIndex < 0)
             ? local
-            : global[joint.parentIndex] * local;
+            : m_PoseScratch[joint.parentIndex] * local;
 
-        m_BoneMatrices[i] = global[i] * joint.inverseBindMatrix;
+        m_BoneMatrices[i] = m_PoseScratch[i] * joint.inverseBindMatrix;
     }
 }
 
@@ -179,7 +194,8 @@ glm::vec3 SkinnedMeshRenderer::SampleVec3(
     const std::vector<float>& times, const std::vector<glm::vec3>& vals,
     float t, const glm::vec3& def) const
 {
-    if (vals.empty() || times.empty()) return def;
+    // sizes are guaranteed equal at clip load (see SetClips/AddClipsFromFile).
+    if (times.empty()) return def;
     if (t <= times.front()) return vals.front();
     if (t >= times.back())  return vals.back();
     for (size_t i = 0; i + 1 < times.size(); i++) {
@@ -194,7 +210,7 @@ glm::vec3 SkinnedMeshRenderer::SampleVec3(
 glm::quat SkinnedMeshRenderer::SampleQuat(
     const std::vector<float>& times, const std::vector<glm::quat>& vals, float t) const
 {
-    if (vals.empty() || times.empty()) return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    if (times.empty()) return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     if (t <= times.front()) return vals.front();
     if (t >= times.back())  return vals.back();
     for (size_t i = 0; i + 1 < times.size(); i++) {

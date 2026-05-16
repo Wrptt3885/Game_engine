@@ -1,4 +1,5 @@
 #include "editor/EditorLayer.h"
+#include "editor/UndoManager.h"
 #include "core/GameObject.h"
 #include "core/Transform.h"
 #include "renderer/MeshRenderer.h"
@@ -29,6 +30,34 @@ static void Field3(const char* label, glm::vec3& v, float speed = 0.1f,
     ImGui::SameLine(80.0f);
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::DragFloat3("##v", glm::value_ptr(v), speed, vmin, vmax);
+    ImGui::PopID();
+}
+
+// Vec3 drag with undo tracking. Captures original value at activation,
+// pushes (redo, undo) closures on deactivation if the value actually changed.
+// `applyFn` writes the value to its destination (so undo/redo can target
+// any field without holding raw refs).
+template <typename Apply>
+static void TrackedVec3Drag(const char* label, glm::vec3& v, float speed,
+                            float vmin, float vmax, const char* opName,
+                            Apply applyFn) {
+    static glm::vec3 s_OldValue(0.0f);
+    ImGui::PushID(label);
+    ImGui::Text("%s", label);
+    ImGui::SameLine(80.0f);
+    ImGui::SetNextItemWidth(-1.0f);
+    glm::vec3 before = v;
+    ImGui::DragFloat3("##v", glm::value_ptr(v), speed, vmin, vmax);
+    if (ImGui::IsItemActivated()) s_OldValue = before;
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        glm::vec3 newV = v;
+        glm::vec3 oldV = s_OldValue;
+        if (newV != oldV) {
+            UndoManager::Push(opName,
+                [applyFn, newV]{ applyFn(newV); },
+                [applyFn, oldV]{ applyFn(oldV); });
+        }
+    }
     ImGui::PopID();
 }
 
@@ -118,16 +147,35 @@ void EditorLayer::DrawInspector(bool isPlaying) {
     // Transform
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         Transform& t = m_Selected->GetTransform();
-        Field3("Position", t.position, 0.1f);
+        auto go = m_Selected;
 
+        TrackedVec3Drag("Position", t.position, 0.1f, 0.0f, 0.0f, "Edit Position",
+            [go](const glm::vec3& v){ go->GetTransform().position = v; });
+
+        // Rotation tracked via euler-degree representation
+        static glm::vec3 s_EulerOld(0.0f);
         glm::vec3 euler = glm::degrees(glm::eulerAngles(t.rotation));
+        glm::vec3 eulerBefore = euler;
         ImGui::Text("Rotation");
         ImGui::SameLine(80.0f);
         ImGui::SetNextItemWidth(-1.0f);
         if (ImGui::DragFloat3("##rot", glm::value_ptr(euler), 1.0f))
             t.rotation = glm::quat(glm::radians(euler));
+        if (ImGui::IsItemActivated()) s_EulerOld = eulerBefore;
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            glm::vec3 newE = euler;
+            glm::vec3 oldE = s_EulerOld;
+            if (newE != oldE) {
+                glm::quat oldQ = glm::quat(glm::radians(oldE));
+                glm::quat newQ = glm::quat(glm::radians(newE));
+                UndoManager::Push("Edit Rotation",
+                    [go, newQ]{ go->GetTransform().rotation = newQ; },
+                    [go, oldQ]{ go->GetTransform().rotation = oldQ; });
+            }
+        }
 
-        Field3("Scale", t.scale, 0.01f, 0.001f, 100.0f);
+        TrackedVec3Drag("Scale", t.scale, 0.01f, 0.001f, 100.0f, "Edit Scale",
+            [go](const glm::vec3& v){ go->GetTransform().scale = v; });
     }
 
     // Components

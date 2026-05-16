@@ -8,6 +8,20 @@
 #include <memory>
 #include <vector>
 
+// Pipeline state shared across passes — file-scope by convention to keep
+// public Renderer.h slim. Set by passes that own them, read by others.
+extern std::shared_ptr<Shader> s_Shader;
+extern std::shared_ptr<Shader> s_DepthShader;
+extern std::shared_ptr<Shader> s_TonemapShader;
+extern std::shared_ptr<Shader> s_BloomThresholdShader;
+extern std::shared_ptr<Shader> s_BloomBlurShader;
+extern std::shared_ptr<Shader> s_PointDepthShader;
+extern glm::mat4               s_LightSpaceMatrix;
+extern glm::vec3               s_PointShadowLightPos;
+extern float                   s_PointShadowFarPlane;
+extern bool                    s_HasPointShadow;
+extern int                     s_HDR_W, s_HDR_H;
+
 #ifdef USE_DX11_BACKEND
 #  include "rhi/dx11/DX11Context.h"
 #  include "rhi/dx11/DX11Debug.h"
@@ -25,6 +39,13 @@ extern ID3D11Texture2D*          s_HDR_Tex;
 extern ID3D11RenderTargetView*   s_HDR_RTV;
 extern ID3D11ShaderResourceView* s_HDR_SRV;
 extern ID3D11SamplerState*       s_TmSampler;
+
+// Shared scene-sized depth target, used by GBufferPass and HDR pass so they
+// don't have to fight over DX11Context::GetDSV() (which is backbuffer-sized).
+extern ID3D11Texture2D*          s_Scene_DepthTex;
+extern ID3D11DepthStencilView*   s_Scene_DSV;
+extern int                       s_Scene_DSV_W, s_Scene_DSV_H;
+void EnsureSceneDepth(int w, int h);
 
 extern ID3D11Texture2D*          s_GBuf_PosTex;
 extern ID3D11RenderTargetView*   s_GBuf_PosRTV;
@@ -56,6 +77,29 @@ extern ID3D11Texture2D*          s_BloomB_Tex;
 extern ID3D11RenderTargetView*   s_BloomB_RTV;
 extern ID3D11ShaderResourceView* s_BloomB_SRV;
 extern int                       s_Bloom_W, s_Bloom_H;
+
+extern ID3D11Texture2D*          s_View_Tex;
+extern ID3D11RenderTargetView*   s_View_RTV;
+extern ID3D11ShaderResourceView* s_View_SRV;
+extern int                       s_View_W, s_View_H;
+
+// IBL — diffuse irradiance cube, specular prefilter cube (with mips), BRDF LUT.
+// Precomputed once at Init from the procedural sky and the configured sun dir.
+extern ID3D11Texture2D*          s_EnvCube_Tex;
+extern ID3D11ShaderResourceView* s_EnvCube_SRV;
+extern ID3D11Texture2D*          s_Irradiance_Tex;
+extern ID3D11ShaderResourceView* s_Irradiance_SRV;
+extern ID3D11Texture2D*          s_Prefilter_Tex;
+extern ID3D11ShaderResourceView* s_Prefilter_SRV;
+extern ID3D11Texture2D*          s_BrdfLUT_Tex;
+extern ID3D11ShaderResourceView* s_BrdfLUT_SRV;
+extern std::shared_ptr<Shader>   s_SkyToCubeShader;
+extern std::shared_ptr<Shader>   s_IrradianceShader;
+extern std::shared_ptr<Shader>   s_PrefilterShader;
+extern std::shared_ptr<Shader>   s_BrdfLUTShader;
+extern bool                      s_IBL_Ready;
+
+void PrecomputeIBL(const glm::vec3& sunDirection);
 #else
 #  include "rhi/opengl/GLShader.h"
 #  include "renderer/ShadowMap.h"
@@ -69,4 +113,8 @@ extern unsigned int  s_HDR_FBO;
 extern unsigned int  s_HDR_Tex;
 extern unsigned int  s_HDR_RBO;
 extern unsigned int  s_HDR_VAO;
+
+extern unsigned int  s_View_FBO;
+extern unsigned int  s_View_Tex;
+extern int           s_View_W, s_View_H;
 #endif

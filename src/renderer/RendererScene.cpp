@@ -41,24 +41,50 @@ void Renderer::BeginScene(const Camera& camera,
     }
 #endif
 
+    // Uniform names precomputed once — avoids std::string allocs per frame
+    static const char* kDirFields[4][3] = {
+        {"u_DirLights[0].direction","u_DirLights[0].color","u_DirLights[0].intensity"},
+        {"u_DirLights[1].direction","u_DirLights[1].color","u_DirLights[1].intensity"},
+        {"u_DirLights[2].direction","u_DirLights[2].color","u_DirLights[2].intensity"},
+        {"u_DirLights[3].direction","u_DirLights[3].color","u_DirLights[3].intensity"},
+    };
+    static const char* kPointFields[8][4] = {
+        {"u_PointLights[0].position","u_PointLights[0].color","u_PointLights[0].intensity","u_PointLights[0].radius"},
+        {"u_PointLights[1].position","u_PointLights[1].color","u_PointLights[1].intensity","u_PointLights[1].radius"},
+        {"u_PointLights[2].position","u_PointLights[2].color","u_PointLights[2].intensity","u_PointLights[2].radius"},
+        {"u_PointLights[3].position","u_PointLights[3].color","u_PointLights[3].intensity","u_PointLights[3].radius"},
+        {"u_PointLights[4].position","u_PointLights[4].color","u_PointLights[4].intensity","u_PointLights[4].radius"},
+        {"u_PointLights[5].position","u_PointLights[5].color","u_PointLights[5].intensity","u_PointLights[5].radius"},
+        {"u_PointLights[6].position","u_PointLights[6].color","u_PointLights[6].intensity","u_PointLights[6].radius"},
+        {"u_PointLights[7].position","u_PointLights[7].color","u_PointLights[7].intensity","u_PointLights[7].radius"},
+    };
+
     int dc = std::min((int)dirLights.size(), 4);
     s_Shader->setInt("u_DirLightCount", dc);
     for (int i = 0; i < dc; i++) {
-        std::string b = "u_DirLights[" + std::to_string(i) + "].";
-        s_Shader->setVec3 (b + "direction", dirLights[i].direction);
-        s_Shader->setVec3 (b + "color",     dirLights[i].color);
-        s_Shader->setFloat(b + "intensity", dirLights[i].intensity);
+        s_Shader->setVec3 (kDirFields[i][0], dirLights[i].direction);
+        s_Shader->setVec3 (kDirFields[i][1], dirLights[i].color);
+        s_Shader->setFloat(kDirFields[i][2], dirLights[i].intensity);
     }
 
     int pc = std::min((int)pointLights.size(), 8);
     s_Shader->setInt("u_PointLightCount", pc);
     for (int i = 0; i < pc; i++) {
-        std::string b = "u_PointLights[" + std::to_string(i) + "].";
-        s_Shader->setVec3 (b + "position",  pointLights[i].position);
-        s_Shader->setVec3 (b + "color",     pointLights[i].color);
-        s_Shader->setFloat(b + "intensity", pointLights[i].intensity);
-        s_Shader->setFloat(b + "radius",    pointLights[i].radius);
+        s_Shader->setVec3 (kPointFields[i][0], pointLights[i].position);
+        s_Shader->setVec3 (kPointFields[i][1], pointLights[i].color);
+        s_Shader->setFloat(kPointFields[i][2], pointLights[i].intensity);
+        s_Shader->setFloat(kPointFields[i][3], pointLights[i].radius);
     }
+
+#ifdef USE_DX11_BACKEND
+    // SSAO ambient occlusion — bind once per scene, not per draw call
+    auto* ctx = DX11Context::GetContext();
+    ctx->PSSetShaderResources(3, 1, &s_SSAOBlur_SRV);
+    // IBL — irradiance (t5), prefilter (t6), BRDF LUT (t7); null when not ready
+    ctx->PSSetShaderResources(5, 1, &s_Irradiance_SRV);
+    ctx->PSSetShaderResources(6, 1, &s_Prefilter_SRV);
+    ctx->PSSetShaderResources(7, 1, &s_BrdfLUT_SRV);
+#endif
 }
 
 void Renderer::DrawMesh(const Mesh& mesh, const glm::mat4& modelMatrix,
@@ -93,10 +119,6 @@ void Renderer::DrawMesh(const Mesh& mesh, const glm::mat4& modelMatrix,
 
     if (useTexture)   material.texture->Bind(0);
     if (useNormalMap) material.normalMap->Bind(1);
-
-#ifdef USE_DX11_BACKEND
-    DX11Context::GetContext()->PSSetShaderResources(3, 1, &s_SSAOBlur_SRV);
-#endif
 
     s_Shader->use();
     mesh.Draw();

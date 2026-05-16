@@ -42,30 +42,53 @@ uniform int        u_PointLightCount;
 
 out vec4 FragColor;
 
-const vec2 poissonDisk[16] = vec2[](
-    vec2(-0.94201624, -0.39906216), vec2( 0.94558609, -0.76890725),
-    vec2(-0.09418410, -0.92938870), vec2( 0.34495938,  0.29387760),
-    vec2(-0.91588581,  0.45771432), vec2(-0.81544232, -0.87912464),
-    vec2(-0.38277543,  0.27676845), vec2( 0.97484398,  0.75648379),
-    vec2( 0.44323325, -0.97511554), vec2( 0.53742981, -0.47373420),
-    vec2(-0.26496911, -0.41893023), vec2( 0.79197514,  0.19090188),
-    vec2(-0.24188840,  0.99706507), vec2(-0.81409955,  0.91437590),
-    vec2( 0.19984126,  0.78641367), vec2( 0.14383161, -0.14100790)
+const vec2 poissonDisk[32] = vec2[](
+    vec2(-0.613392,  0.617481), vec2( 0.170019, -0.040254),
+    vec2(-0.299417,  0.791925), vec2( 0.645680,  0.493210),
+    vec2(-0.651784,  0.717887), vec2( 0.421003,  0.027070),
+    vec2(-0.817194, -0.271096), vec2(-0.705374, -0.668203),
+    vec2( 0.977050, -0.108615), vec2( 0.063326,  0.142369),
+    vec2( 0.203528,  0.214331), vec2(-0.667531,  0.326090),
+    vec2(-0.098422, -0.295755), vec2(-0.885922,  0.215369),
+    vec2( 0.566637,  0.605213), vec2( 0.039766, -0.396100),
+    vec2( 0.751946,  0.453352), vec2( 0.078707, -0.715323),
+    vec2(-0.075838, -0.529344), vec2( 0.724479, -0.580798),
+    vec2( 0.222999, -0.215125), vec2(-0.467574, -0.405438),
+    vec2(-0.248268, -0.814753), vec2( 0.354411, -0.887570),
+    vec2( 0.175817,  0.382366), vec2( 0.487472, -0.063082),
+    vec2(-0.084078,  0.898312), vec2( 0.488876, -0.783441),
+    vec2( 0.470016,  0.217933), vec2(-0.696890, -0.549791),
+    vec2(-0.149693,  0.605762), vec2( 0.034211,  0.979980)
 );
 
 float ShadowFactor(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     vec3 proj = fragPosLightSpace.xyz / fragPosLightSpace.w;
     proj = proj * 0.5 + 0.5;
     if (proj.z > 1.0) return 0.0;
-    float bias  = max(0.005 * (1.0 - dot(normal, lightDir)), 0.0005);
-    float spread = 2.5;
+    float bias  = max(0.0003 * (1.0 - dot(normal, lightDir)), 0.00003);
+    float spread = 2.0;  // OpenGL shadow map is 2048 (half DX11 4096); use smaller texel-spread
     vec2  texel  = spread / textureSize(u_ShadowMap, 0);
+
+    // Per-pixel disk rotation — Interleaved Gradient Noise (no sin() periodicity).
+    float ign   = fract(52.9829189 * fract(0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+    float angle = ign * 6.28318530718;
+    float cs = cos(angle), sn = sin(angle);
+    mat2 rot = mat2(cs, -sn, sn, cs);
+
     float shadow = 0.0;
-    for (int i = 0; i < 16; i++) {
-        shadow += texture(u_ShadowMap, vec3(proj.xy + poissonDisk[i] * texel, proj.z - bias));
+    for (int i = 0; i < 32; i++) {
+        vec2 offset = rot * poissonDisk[i] * texel;
+        shadow += texture(u_ShadowMap, vec3(proj.xy + offset, proj.z - bias));
     }
-    return shadow / 16.0;
+    return shadow / 32.0;
 }
+
+// Shadow attenuation strength on direct light. 1.0 = fully black core,
+// 0.7 = 30% direct leaks through (wall texture still visible in shadow).
+const float SHADOW_STRENGTH = 0.75;
+
+// Ambient contribution. Lower = more contrast between lit and shaded faces.
+const float AMBIENT_STRENGTH = 0.6;
 
 // --- Cook-Torrance BRDF helpers -------------------------------------------
 
@@ -149,7 +172,7 @@ void main() {
         vec3 L        = normalize(-u_DirLights[i].direction);
         float s       = (i == 0) ? shadow : 0.0;
         vec3 radiance = u_DirLights[i].color * u_DirLights[i].intensity;
-        Lo += (1.0 - s) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
+        Lo += (1.0 - s * SHADOW_STRENGTH) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
     }
 
     for (int i = 0; i < u_PointLightCount; i++) {
@@ -170,9 +193,9 @@ void main() {
 
     vec3 kS = FresnelRoughness(max(dot(N, V), 0.0), F0, roughness);
     vec3 kD = (1.0 - kS) * (1.0 - metallic);
-    float shadowedAmbient = 1.0 - shadow * 0.4;
+    float shadowedAmbient = 1.0 - shadow * 0.15;  // subtle ambient dim in shadow
     vec3 ambient = (kD * envColor * albedo
-                 + kS * envColor * (1.0 - roughness * roughness) * 0.5) * shadowedAmbient;
+                 + kS * envColor * (1.0 - roughness * roughness) * 0.5) * shadowedAmbient * AMBIENT_STRENGTH;
 
     FragColor = vec4(ambient + Lo, 1.0);
 }

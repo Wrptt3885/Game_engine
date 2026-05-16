@@ -1,4 +1,5 @@
 #include "editor/EditorLayer.h"
+#include "editor/UndoManager.h"
 #include "core/SceneSerializer.h"
 #include "core/Scene.h"
 #include "renderer/Renderer.h"
@@ -18,12 +19,26 @@ void EditorLayer::DrawMenuBar(Scene& scene, const std::string& scenePath, bool i
         ImGui::EndMenu();
     }
 
+    if (ImGui::BeginMenu("Edit")) {
+        std::string undoLabel = "Undo";
+        std::string redoLabel = "Redo";
+        if (UndoManager::CanUndo()) undoLabel += " (" + UndoManager::TopUndoName() + ")";
+        if (UndoManager::CanRedo()) redoLabel += " (" + UndoManager::TopRedoName() + ")";
+        if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, UndoManager::CanUndo() && !isPlaying))
+            UndoManager::Undo();
+        if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, UndoManager::CanRedo() && !isPlaying))
+            UndoManager::Redo();
+        ImGui::EndMenu();
+    }
+
     if (ImGui::BeginMenu("View")) {
         if (ImGui::MenuItem("Fullscreen", "F11"))
             ToggleFullscreen();
         ImGui::Separator();
-        ImGui::MenuItem("Hierarchy",  nullptr, &m_ShowHierarchy);
-        ImGui::MenuItem("Inspector",  nullptr, &m_ShowInspector);
+        ImGui::MenuItem("Hierarchy",       nullptr, &m_ShowHierarchy);
+        ImGui::MenuItem("Inspector",       nullptr, &m_ShowInspector);
+        ImGui::MenuItem("Asset Browser",   nullptr, &m_ShowAssetBrowser);
+        ImGui::MenuItem("Scene Viewport",  nullptr, &m_ShowSceneViewport);
         ImGui::EndMenu();
     }
 

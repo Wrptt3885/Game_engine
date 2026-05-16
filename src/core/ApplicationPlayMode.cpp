@@ -7,6 +7,7 @@
 #include "audio/AudioSource.h"
 #include "scripting/LuaManager.h"
 #include "scripting/LuaScript.h"
+#include "editor/UndoManager.h"
 
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
@@ -15,6 +16,7 @@
 static const std::string SCENE_PATH_PM = std::string(ASSET_DIR) + "/scenes/MainScene.json";
 
 void Application::StartPlay() {
+    UndoManager::Clear();
     m_SceneSnapshot = SceneSerializer::SaveToString(*m_CurrentScene);
     m_IsPlaying = true;
     m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
@@ -86,6 +88,7 @@ void Application::StartPlay() {
 }
 
 void Application::StopPlay() {
+    UndoManager::Clear();
     // Stop all audio before restoring scene
     if (m_CurrentScene) {
         for (size_t i = 0; i < m_CurrentScene->GetGameObjectCount(); i++) {
@@ -101,12 +104,12 @@ void Application::StopPlay() {
     m_Editor.ClearSelection();
     m_CharacterMesh = nullptr;
 
+    m_IsPlaying = false;
     auto restored = SceneSerializer::LoadFromString(m_SceneSnapshot);
     if (restored) {
         m_CurrentScene = restored;
         ReconnectSceneReferences();
         m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
     }
-    m_IsPlaying = false;
     std::cout << "[PlayMode] Stopped\n";
 }

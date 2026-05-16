@@ -117,6 +117,7 @@ void Application::InitScene() {
     fill->color     = glm::vec3(0.4f, 0.5f, 0.7f);
     fill->intensity = 1.26f;
 
+    m_CurrentScenePath = std::string(ASSET_DIR) + "/scenes/MainScene.json";
     ReconnectSceneReferences();
 }
 

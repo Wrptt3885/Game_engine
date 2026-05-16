@@ -1,4 +1,5 @@
 #include "editor/EditorLayer.h"
+#include "editor/UndoManager.h"
 #include "core/Scene.h"
 #include "core/GameObject.h"
 #include "ui/UILabel.h"
@@ -16,14 +17,22 @@ void EditorLayer::DrawHierarchy(Scene& scene) {
 
     if (ImGui::BeginPopup("##creatego")) {
         if (ImGui::MenuItem("Empty GameObject")) {
-            m_Selected   = scene.CreateGameObject("GameObject");
+            auto go = scene.CreateGameObject("GameObject");
+            m_Selected   = go;
             m_SelectedUI = nullptr;
+            Scene* sc = &scene;
+            UndoManager::Push("Create GameObject",
+                [sc, go]{ sc->AddGameObject(go); },
+                [sc, go]{ sc->DestroyGameObject(go); });
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 
     ImGui::Separator();
+
+    // Defer destroy to after iteration so we don't mutate the vector mid-loop
+    std::shared_ptr<GameObject> goToDelete;
 
     for (size_t i = 0; i < scene.GetGameObjectCount(); i++) {
         auto obj = scene.GetGameObject(i);
@@ -37,18 +46,25 @@ void EditorLayer::DrawHierarchy(Scene& scene) {
         }
 
         if (!m_IsPlaying && ImGui::BeginPopupContextItem("##ctx")) {
-            if (ImGui::MenuItem("Delete")) {
-                if (m_Selected == obj) m_Selected = nullptr;
-                if (m_Scene) m_Scene->DestroyGameObject(obj);
-            }
+            if (ImGui::MenuItem("Delete")) goToDelete = obj;
             ImGui::EndPopup();
         }
         ImGui::PopID();
     }
 
-    if (!m_IsPlaying && m_Selected && m_Scene && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
-        m_Scene->DestroyGameObject(m_Selected);
-        m_Selected = nullptr;
+    if (!m_IsPlaying && !goToDelete && m_Selected && m_Scene &&
+        ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+        goToDelete = m_Selected;
+    }
+
+    if (goToDelete && m_Scene) {
+        if (m_Selected == goToDelete) m_Selected = nullptr;
+        Scene* sc = m_Scene;
+        auto go = goToDelete;
+        sc->DestroyGameObject(go);
+        UndoManager::Push("Delete GameObject",
+            [sc, go]{ sc->DestroyGameObject(go); },
+            [sc, go]{ sc->AddGameObject(go); });
     }
 
     // ---- UI Layer section --------------------------------------------------

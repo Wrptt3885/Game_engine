@@ -64,6 +64,9 @@ Texture2D    t_NormalMap    : register(t1);
 Texture2D<float> t_ShadowMap : register(t2);
 Texture2D    t_SSAO         : register(t3);
 TextureCube  t_PointShadow  : register(t4);
+TextureCube  t_IBL_Irradiance : register(t5);
+TextureCube  t_IBL_Prefilter  : register(t6);
+Texture2D    t_BrdfLUT        : register(t7);
 SamplerState           s_Linear  : register(s0);
 SamplerComparisonState s_Shadow  : register(s1);
 
@@ -133,18 +136,26 @@ VSOut VS(VSIn input)
 
 // ---- Shadow -----------------------------------------------------------------
 
-static const float2 poissonDisk[16] = {
-    float2(-0.94201624, -0.39906216), float2( 0.94558609, -0.76890725),
-    float2(-0.09418410, -0.92938870), float2( 0.34495938,  0.29387760),
-    float2(-0.91588581,  0.45771432), float2(-0.81544232, -0.87912464),
-    float2(-0.38277543,  0.27676845), float2( 0.97484398,  0.75648379),
-    float2( 0.44323325, -0.97511554), float2( 0.53742981, -0.47373420),
-    float2(-0.26496911, -0.41893023), float2( 0.79197514,  0.19090188),
-    float2(-0.24188840,  0.99706507), float2(-0.81409955,  0.91437590),
-    float2( 0.19984126,  0.78641367), float2( 0.14383161, -0.14100790)
+static const float2 poissonDisk[32] = {
+    float2(-0.613392,  0.617481), float2( 0.170019, -0.040254),
+    float2(-0.299417,  0.791925), float2( 0.645680,  0.493210),
+    float2(-0.651784,  0.717887), float2( 0.421003,  0.027070),
+    float2(-0.817194, -0.271096), float2(-0.705374, -0.668203),
+    float2( 0.977050, -0.108615), float2( 0.063326,  0.142369),
+    float2( 0.203528,  0.214331), float2(-0.667531,  0.326090),
+    float2(-0.098422, -0.295755), float2(-0.885922,  0.215369),
+    float2( 0.566637,  0.605213), float2( 0.039766, -0.396100),
+    float2( 0.751946,  0.453352), float2( 0.078707, -0.715323),
+    float2(-0.075838, -0.529344), float2( 0.724479, -0.580798),
+    float2( 0.222999, -0.215125), float2(-0.467574, -0.405438),
+    float2(-0.248268, -0.814753), float2( 0.354411, -0.887570),
+    float2( 0.175817,  0.382366), float2( 0.487472, -0.063082),
+    float2(-0.084078,  0.898312), float2( 0.488876, -0.783441),
+    float2( 0.470016,  0.217933), float2(-0.696890, -0.549791),
+    float2(-0.149693,  0.605762), float2( 0.034211,  0.979980)
 };
 
-float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir)
+float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir, float2 screenPos)
 {
     float3 proj = fragPosLS.xyz / fragPosLS.w;
     // Convert NDC [-1,1] to texture [0,1]; DX11 Y is already correct
@@ -152,19 +163,29 @@ float ShadowFactor(float4 fragPosLS, float3 normal, float3 lightDir)
     proj.y  = 1.0 - proj.y;
     if (proj.z < 0.0 || proj.z > 1.0) return 0.0;
 
-    float bias  = max(0.001 * (1.0 - dot(normal, lightDir)), 0.0001);
-    float spread = 4.0;
+    float bias  = max(0.0003 * (1.0 - dot(normal, lightDir)), 0.00003);
+    float spread = 3.0;
 
     uint w, h;
     t_ShadowMap.GetDimensions(w, h);
     float2 texel = spread / float2(w, h);
 
+    // Per-pixel rotation of the Poisson disk — Interleaved Gradient Noise
+    // (Jorge Jimenez) gives blue-noise-like distribution without sin()'s
+    // periodicity artifacts. The frac(sin()) hash shows wave patterns when
+    // zoomed in close because sin() periods land on pixel grid.
+    float ign   = frac(52.9829189 * frac(0.06711056 * screenPos.x + 0.00583715 * screenPos.y));
+    float angle = ign * 6.28318530718;
+    float cs = cos(angle), sn = sin(angle);
+    float2x2 rot = float2x2(cs, -sn, sn, cs);
+
     float shadow = 0.0;
     [unroll]
-    for (int i = 0; i < 16; i++) {
-        shadow += t_ShadowMap.SampleCmpLevelZero(s_Shadow, proj.xy + poissonDisk[i] * texel, proj.z - bias);
+    for (int i = 0; i < 32; i++) {
+        float2 offset = mul(rot, poissonDisk[i]) * texel;
+        shadow += t_ShadowMap.SampleCmpLevelZero(s_Shadow, proj.xy + offset, proj.z - bias);
     }
-    return shadow / 16.0;
+    return shadow / 32.0;
 }
 
 // ---- Point shadow -----------------------------------------------------------
@@ -182,6 +203,14 @@ float PointShadowFactor(float3 fragPos)
 // ---- Cook-Torrance BRDF helpers ---------------------------------------------
 
 static const float PI = 3.14159265359;
+
+// Shadow attenuation strength on direct light. 1.0 = fully black core,
+// 0.7 = 30% direct leaks through (wall texture still visible in shadow).
+static const float SHADOW_STRENGTH = 0.75;
+
+// Ambient (IBL/hemisphere) contribution. Lower = more contrast between lit and
+// shaded faces → crisper silhouettes. Higher = softer photo-real look.
+static const float AMBIENT_STRENGTH = 0.6;
 
 float DistributionGGX(float NdotH, float a2) {
     float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
@@ -253,7 +282,7 @@ float4 PS(VSOut input) : SV_TARGET
     float shadow = 0.0;
     if (u_DirLightCount > 0) {
         float3 L0 = normalize(-u_DirLights[0].direction);
-        shadow = ShadowFactor(input.fragPosLightSpace, N, L0);
+        shadow = ShadowFactor(input.fragPosLightSpace, N, L0, input.position.xy);
     }
 
     float3 Lo = float3(0.0, 0.0, 0.0);
@@ -262,7 +291,7 @@ float4 PS(VSOut input) : SV_TARGET
         float3 L      = normalize(-u_DirLights[i].direction);
         float  s      = (i == 0) ? shadow : 0.0;
         float3 radiance = u_DirLights[i].color * u_DirLights[i].intensity;
-        Lo += (1.0 - s) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
+        Lo += (1.0 - s * SHADOW_STRENGTH) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
     }
 
     for (int j = 0; j < u_PointLightCount; j++) {
@@ -273,7 +302,7 @@ float4 PS(VSOut input) : SV_TARGET
         float3 L        = normalize(toLight);
         float3 radiance = u_PointLights[j].color * u_PointLights[j].intensity * atten;
         float  s        = (j == 0) ? PointShadowFactor(input.fragPos) : 0.0;
-        Lo += (1.0 - s) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
+        Lo += (1.0 - s * SHADOW_STRENGTH) * PBR(N, V, L, radiance, albedo, roughness, metallic, F0);
     }
 
     // Sample SSAO — GetDimensions returns 0 when SRV is null (no SSAO yet)
@@ -281,17 +310,36 @@ float4 PS(VSOut input) : SV_TARGET
     t_SSAO.GetDimensions(aoW, aoH);
     float ao = (aoW > 0) ? t_SSAO.Sample(s_Linear, input.position.xy / float2(aoW, aoH)).r : 1.0;
 
-    // Hemisphere ambient with Fresnel-based specular approximation
-    float3 skyColor    = float3(0.20, 0.32, 0.58);
-    float3 groundColor = float3(0.10, 0.08, 0.05);
-    float  hemi     = N.y * 0.5 + 0.5;
-    float3 envColor = lerp(groundColor, skyColor, hemi);
-
-    float3 kS = FresnelRoughness(max(dot(N, V), 0.0), F0, roughness);
+    float NdotV = max(dot(N, V), 0.0);
+    float3 kS = FresnelRoughness(NdotV, F0, roughness);
     float3 kD = (1.0 - kS) * (1.0 - metallic);
-    float shadowedAmbient = 1.0 - shadow * 0.4;
-    float3 ambient = (kD * envColor * albedo
-                   + kS * envColor * (1.0 - roughness * roughness) * 0.5) * ao * shadowedAmbient;
+    float shadowedAmbient = 1.0 - shadow * 0.15;  // subtle ambient dim in shadow
+    float3 ambient;
+
+    // IBL: split-sum approximation. Fallback to hemisphere ambient when the IBL
+    // textures haven't been precomputed (e.g. before Renderer::Init finishes).
+    uint irrW, irrH, irrMips;
+    t_IBL_Irradiance.GetDimensions(0, irrW, irrH, irrMips);
+    if (irrW > 0) {
+        float3 irradiance = t_IBL_Irradiance.Sample(s_Linear, N).rgb;
+        float3 R = reflect(-V, N);
+
+        uint pfW, pfH, pfMips;
+        t_IBL_Prefilter.GetDimensions(0, pfW, pfH, pfMips);
+        float3 prefiltered = t_IBL_Prefilter.SampleLevel(s_Linear, R, roughness * float(pfMips - 1)).rgb;
+
+        float2 brdf = t_BrdfLUT.Sample(s_Linear, float2(NdotV, roughness)).rg;
+        float3 diffuse  = kD * irradiance * albedo;
+        float3 specular = prefiltered * (kS * brdf.x + brdf.y);
+        ambient = (diffuse + specular) * ao * shadowedAmbient * AMBIENT_STRENGTH;
+    } else {
+        float3 skyColor    = float3(0.20, 0.32, 0.58);
+        float3 groundColor = float3(0.10, 0.08, 0.05);
+        float  hemi     = N.y * 0.5 + 0.5;
+        float3 envColor = lerp(groundColor, skyColor, hemi);
+        ambient = (kD * envColor * albedo
+                + kS * envColor * (1.0 - roughness * roughness) * 0.5) * ao * shadowedAmbient * AMBIENT_STRENGTH;
+    }
 
     return float4(ambient + Lo, 1.0);
 }

@@ -16,6 +16,9 @@ Application::Application() : m_Window(nullptr), m_LastFrameTime(0.0f) {
     m_PhysicsWorld.Init();
     AudioManager::Init();
     LuaManager::Init();
+    LuaManager::SetLoadSceneCallback([this](const std::string& p){ LoadScene(p); });
+    LuaManager::SetPushSceneCallback([this](const std::string& p){ PushScene(p); });
+    LuaManager::SetPopSceneCallback ([this](){ PopScene(); });
     InitScene();
     m_PhysicsWorld.SyncFromScene(*m_CurrentScene);
 }
